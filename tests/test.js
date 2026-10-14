@@ -1,4 +1,4 @@
-/* Pruebas de la lógica pura de Trazo. Correr con:  node tests/test.js */
+/* Pruebas de la lógica pura de Cota. Correr con:  node tests/test.js */
 'use strict';
 const assert = require('assert');
 const U = require('../js/units.js');

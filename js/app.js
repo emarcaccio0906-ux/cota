@@ -1,10 +1,10 @@
-/* Trazo — editor 2D de planos (prototipo, fases 1 y 2).
+/* Cota — editor 2D de planos (prototipo, fases 1 y 2).
  * Todo en un solo archivo, sin dependencias. Unidades internas: metros, Y hacia arriba. */
 (function () {
   'use strict';
 
-  var U = window.TrazoUnits;
-  var G = window.TrazoGeom;
+  var U = window.CotaUnits;
+  var G = window.CotaGeom;
 
   /* ------------------------------------------------------------------ */
   /* Constantes                                                          */
@@ -15,8 +15,8 @@
   var BASE_SCALE = 40;       // el 100% del zoom
   var GRID_STEPS_FT = [1 / 12, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
   var GRID_STEPS_M = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100];
-  var STORE_DOC = 'trazo:doc:v1';
-  var STORE_PREFS = 'trazo:prefs:v1';
+  var STORE_DOC = 'cota:doc:v1';
+  var STORE_PREFS = 'cota:prefs:v1';
   var DRAW_TOOLS = ['line', 'polyline', 'rect', 'circle', 'wall', 'door', 'window', 'dim'];
   var TYPE_NAMES = { line: 'Línea', polyline: 'Polilínea', rect: 'Rectángulo', circle: 'Círculo', wall: 'Pared', door: 'Puerta', window: 'Ventana', dim: 'Cota' };
 
@@ -1336,9 +1336,9 @@
     }
   });
   $('btn-save').addEventListener('click', function () {
-    var payload = { app: 'trazo', version: 1, units: units, layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer };
-    download(new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }), 'plano-trazo.json');
-    toast('Guardado como plano-trazo.json');
+    var payload = { app: 'cota', version: 1, units: units, layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer };
+    download(new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }), 'plano-cota.json');
+    toast('Guardado como plano-cota.json');
   });
   $('btn-open').addEventListener('click', function () { $('file-open').click(); });
   $('file-open').addEventListener('change', function (e) {
@@ -1349,7 +1349,7 @@
     r.onload = function () {
       var clean = null;
       try { clean = cleanDoc(JSON.parse(String(r.result))); } catch (err) { clean = null; }
-      if (!clean) { toast('Ese archivo no es un plano de Trazo.'); return; }
+      if (!clean) { toast('Ese archivo no es un plano de Cota.'); return; }
       loadDoc(clean, { message: 'Plano abierto: ' + f.name });
     };
     r.readAsText(f);
@@ -1358,7 +1358,7 @@
     render(true);
     cv.toBlob(function (blob) {
       render(false);
-      if (blob) { download(blob, 'plano-trazo.png'); toast('Imagen guardada como plano-trazo.png'); }
+      if (blob) { download(blob, 'plano-cota.png'); toast('Imagen guardada como plano-cota.png'); }
     }, 'image/png');
   });
 
@@ -1412,5 +1412,5 @@
   boot();
 
   // para depurar desde la consola del navegador
-  window.Trazo = { get doc() { return doc; }, get view() { return view; }, setTool: setTool, fitView: fitView };
+  window.Cota = { get doc() { return doc; }, get view() { return view; }, setTool: setTool, fitView: fitView };
 })();

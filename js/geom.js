@@ -1,4 +1,4 @@
-/* Trazo — geometría pura (sin canvas ni DOM). Unidades: metros, Y hacia arriba.
+/* Cota — geometría pura (sin canvas ni DOM). Unidades: metros, Y hacia arriba.
  * Objetos del dibujo:
  *   line     {a, b}
  *   polyline {pts, closed}
@@ -277,5 +277,5 @@
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.TrazoGeom = api;
+  else root.CotaGeom = api;
 })(this);

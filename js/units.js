@@ -1,6 +1,6 @@
-/* Trazo — unidades: lectura y formato de medidas.
+/* Cota — unidades: lectura y formato de medidas.
  * Todo el dibujo se guarda en METROS. Aquí se convierte de/hacia pies-pulgadas y metros.
- * Funciona en el navegador (window.TrazoUnits) y en Node (require) para las pruebas. */
+ * Funciona en el navegador (window.CotaUnits) y en Node (require) para las pruebas. */
 (function (root) {
   'use strict';
 
@@ -119,5 +119,5 @@
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.TrazoUnits = api;
+  else root.CotaUnits = api;
 })(this);

@@ -1,4 +1,4 @@
-# Trazo
+# Cota
 
 Editor de planos 2D en el navegador, pensado para estudiantes, contratistas, diseñadores y gente que dibuja por gusto.
 Funciona con mouse en computadora y con dedo o Apple Pencil en iPad. No necesita instalación ni servidor:
