@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1520">
+  <title>Trazo</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand" aria-label="Trazo">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 20V4h18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/><path d="M8 20V9h13" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="square"/></svg>
+      <span>Trazo</span>
+    </div>
+
+    <div class="group">
+      <button class="icon-btn" id="btn-undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"></button>
+      <button class="icon-btn" id="btn-redo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer"></button>
+    </div>
+
+    <div class="group file-group">
+      <button class="txt-btn" id="btn-new">Nuevo</button>
+      <button class="txt-btn" id="btn-open">Abrir</button>
+      <button class="txt-btn" id="btn-save">Guardar</button>
+      <button class="txt-btn" id="btn-png">PNG</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="seg" role="group" aria-label="Unidades">
+      <button id="u-ft" class="seg-btn" aria-pressed="true">pies</button>
+      <button id="u-m" class="seg-btn" aria-pressed="false">metros</button>
+    </div>
+    <button class="icon-btn" id="btn-theme" title="Tema claro/oscuro" aria-label="Cambiar tema"></button>
+    <button class="icon-btn" id="btn-panel" title="Capas y propiedades" aria-label="Capas y propiedades"></button>
+  </header>
+
+  <nav id="tools" class="tools" aria-label="Herramientas"></nav>
+
+  <main class="stage" id="stage">
+    <canvas id="cv" aria-label="Lienzo de dibujo"></canvas>
+
+    <div class="float top-left" id="options" hidden></div>
+
+    <div class="float top-right" id="selbar" hidden>
+      <span id="sel-count" class="sel-count"></span>
+      <button class="chip-btn" id="act-dup">Duplicar</button>
+      <button class="chip-btn" id="act-rot">Girar 90°</button>
+      <button class="chip-btn danger" id="act-del">Borrar</button>
+    </div>
+
+    <div class="float bottom-center" id="touchbar" hidden>
+      <button class="pill" id="tb-done">Terminar</button>
+      <button class="pill ghost" id="tb-cancel">Cancelar</button>
+    </div>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+  </main>
+
+  <aside id="panel" class="panel" aria-label="Capas y propiedades">
+    <section>
+      <div class="panel-head">
+        <h2>Capas</h2>
+        <button class="chip-btn" id="layer-add">+ Capa</button>
+      </div>
+      <ul id="layers" class="layers"></ul>
+    </section>
+    <section>
+      <div class="panel-head"><h2>Propiedades</h2></div>
+      <div id="props" class="props"></div>
+    </section>
+    <section class="help">
+      <div class="panel-head"><h2>Atajos</h2></div>
+      <dl>
+        <dt>V</dt><dd>Seleccionar</dd>
+        <dt>L · P · R · C</dt><dd>Línea · Polilínea · Rectángulo · Círculo</dd>
+        <dt>W · D · N · M</dt><dd>Pared · Puerta · Ventana · Cota</dd>
+        <dt>Shift</dt><dd>Ortogonal mientras lo mantienes</dd>
+        <dt>Enter · Esc</dt><dd>Terminar · Cancelar</dd>
+        <dt>Escribe un número</dt><dd>Medida exacta (12'6", 3.5m, 150cm). También 12&lt;45 para largo y ángulo</dd>
+        <dt>Rueda · Espacio+arrastrar</dt><dd>Zoom · Mover la vista</dd>
+        <dt>2 dedos</dt><dd>Zoom y mover en iPad</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <footer class="statusbar">
+    <form id="cmd" class="cmd" autocomplete="off">
+      <label for="cmd-input" id="cmd-hint" class="cmd-hint">Elige una herramienta</label>
+      <input id="cmd-input" type="text" inputmode="text" enterkeyhint="done" spellcheck="false" placeholder="Medida o x,y">
+    </form>
+    <div class="status-right">
+      <button class="tog" id="tog-snap" aria-pressed="true" title="Enganchar a cuadrícula y puntos (F3)">Snap</button>
+      <button class="tog" id="tog-ortho" aria-pressed="false" title="Ortogonal (F8)">Orto</button>
+      <span class="readout" id="coords">0'  0'</span>
+      <span class="readout dim" id="zoom">100%</span>
+    </div>
+  </footer>
+</div>
+
+<dialog id="dlg-new">
+  <form method="dialog" class="dlg-body">
+    <h3>¿Empezar un dibujo nuevo?</h3>
+    <p>Se borra el dibujo actual. Si lo quieres conservar, usa Guardar primero.</p>
+    <div class="dlg-actions">
+      <button class="pill ghost" value="cancel">Cancelar</button>
+      <button class="pill" value="ok">Dibujo nuevo</button>
+    </div>
+  </form>
+</dialog>
+
+<input type="file" id="file-open" accept=".json,application/json" hidden>
+
+<script src="js/units.js"></script>
+<script src="js/geom.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
