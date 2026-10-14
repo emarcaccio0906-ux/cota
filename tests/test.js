@@ -38,6 +38,13 @@ test('ida y vuelta', () => {
   const m = U.parseLength('7\'3 1/4"', 'ft');
   assert.strictEqual(U.formatLength(m, 'ft'), '7\'-3 1/4"');
 });
+test('precisión en pies: 1/4"', () => assert.strictEqual(U.formatLength(0.3048 * 3 + 0.0254 * 2.3, 'ft', 4), '3\'-2 1/4"'));
+test('precisión en pies: 1/8"', () => assert.strictEqual(U.formatLength(0.3048 * 3 + 0.0254 * 2.3, 'ft', 8), '3\'-2 1/4"'));
+test('precisión en pies: pulgada entera', () => assert.strictEqual(U.formatLength(0.3048 * 3 + 0.0254 * 2.6, 'ft', 1), '3\'-3"'));
+test('precisión en pies: media pulgada', () => assert.strictEqual(U.formatLength(0.0254 * 4.5, 'ft', 2), '4 1/2"'));
+test('precisión en metros: 3 decimales', () => assert.strictEqual(U.formatLength(3.4567, 'm', 3), '3.457 m'));
+test('precisión en metros: 1 decimal', () => assert.strictEqual(U.formatLength(3.456, 'm', 1), '3.5 m'));
+test('metros automático (0)', () => assert.strictEqual(U.formatLength(3.456, 'm', 0), '3.46 m'));
 test('área en ft²', () => assert.strictEqual(U.formatArea(9.290304, 'ft'), '100 ft²'));
 test('área en m²', () => assert.strictEqual(U.formatArea(12.5, 'm'), '12.5 m²'));
 

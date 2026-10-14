@@ -8,7 +8,9 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 
 - Lienzo con zoom y movimiento (rueda, Espacio+arrastrar, dos dedos en iPad)
 - Línea, polilínea, rectángulo, círculo, pared con espesor, puerta, ventana y cota
-- Snap a cuadrícula, extremos y puntos medios; modo ortogonal (Shift u "Orto")
+- Snap a cuadrícula, extremos y puntos medios; modo ortogonal (Shift u "Orto") y ángulo polar (15°, 30°, 45°, 90°)
+- Cuadrícula a tu medida: espaciado fijo o automático (1", 4", 16", 1', 4'... o el que escribas), líneas gruesas cada N, paso del snap propio y precisión de las medidas (hasta 1/16")
+- Medidas comunes de obra para paredes (interior, exterior, bloque), puertas y ventanas
 - Medidas exactas escritas: `12'6"`, `3.5m`, `150cm`, `12<45` (largo y ángulo), `ancho,alto`
 - Pies-pulgadas o metros, con el mismo dibujo
 - Elegir, mover (arrastrar), elegir por ventana, duplicar, girar 90°, borrar

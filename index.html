@@ -69,6 +69,10 @@
       <ul id="layers" class="layers"></ul>
     </section>
     <section>
+      <div class="panel-head"><h2>Cuadrícula y medidas</h2></div>
+      <div id="gridcfg" class="props"></div>
+    </section>
+    <section>
       <div class="panel-head"><h2>Propiedades</h2></div>
       <div id="props" class="props"></div>
     </section>
@@ -93,6 +97,7 @@
       <input id="cmd-input" type="text" inputmode="text" enterkeyhint="done" spellcheck="false" placeholder="Medida o x,y">
     </form>
     <div class="status-right">
+      <button class="tog" id="tog-grid" aria-pressed="true" title="Mostrar cuadrícula (F7)">Grid</button>
       <button class="tog" id="tog-snap" aria-pressed="true" title="Enganchar a cuadrícula y puntos (F3)">Snap</button>
       <button class="tog" id="tog-ortho" aria-pressed="false" title="Ortogonal (F8)">Orto</button>
       <span class="readout" id="coords">0'  0'</span>

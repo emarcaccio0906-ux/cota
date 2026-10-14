@@ -15,6 +15,15 @@
   var BASE_SCALE = 40;       // el 100% del zoom
   var GRID_STEPS_FT = [1 / 12, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
   var GRID_STEPS_M = [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100];
+  var IN_M = 0.0254;
+  // espaciados que se pueden elegir (en pulgadas o metros); incluye medidas de obra: 16" entre postes, 4' de plancha
+  var STEP_PRESETS_FT = [['1"', 1], ['3"', 3], ['4"', 4], ['6"', 6], ['1\'', 12], ['16"', 16], ['2\'', 24], ['4\'', 48], ['5\'', 60], ['10\'', 120]]
+    .map(function (a) { return { label: a[0], m: a[1] * IN_M }; });
+  var STEP_PRESETS_M = [['1 cm', 0.01], ['5 cm', 0.05], ['10 cm', 0.1], ['25 cm', 0.25], ['50 cm', 0.5], ['1 m', 1], ['2 m', 2], ['5 m', 5]]
+    .map(function (a) { return { label: a[0], m: a[1] }; });
+  var WALL_PRESETS = [['Interior', 4.5 * IN_M], ['Exterior', 6.5 * IN_M], ['Bloque', 8 * IN_M], ['Muro grueso', 12 * IN_M]];
+  var DOOR_PRESETS = { ft: [24, 28, 30, 32, 36, 60].map(function (i) { return i * IN_M; }), m: [0.6, 0.7, 0.8, 0.9, 1.0, 1.6] };
+  var WINDOW_PRESETS = { ft: [24, 36, 48, 60, 72].map(function (i) { return i * IN_M; }), m: [0.6, 0.9, 1.2, 1.5, 1.8] };
   var STORE_DOC = 'cota:doc:v1';
   var STORE_PREFS = 'cota:prefs:v1';
   var DRAW_TOOLS = ['line', 'polyline', 'rect', 'circle', 'wall', 'door', 'window', 'dim'];
@@ -70,8 +79,11 @@
   var tool = 'select';
   var draft = null;                 // {tool, pts, start, count}
   var selection = new Set();
-  var settings = { wallT: 0.1524, doorW: 0.9144, winW: 1.2192 };
-  var mouse = { sx: 0, sy: 0, raw: [0, 0], p: [0, 0], snap: { kind: 'free', p: [0, 0] }, over: false };
+  var settings = { wallT: 4.5 * 0.0254, doorW: 0.9144, winW: 1.2192 };
+  var gridCfg = { show: true, step: 0, major: 5, snapStep: 0 };   // step 0 = automático; snapStep 0 = igual a la cuadrícula
+  var polarInc = 0;                 // grados; 0 = apagado
+  var precision = { ft: 16, m: 0 }; // pies: denominador de la fracción; metros: decimales (0 = automático)
+  var mouse = { sx: 0, sy: 0, raw: [0, 0], p: [0, 0], snap: { kind: 'free', p: [0, 0] }, over: false, polar: null };
   var snapOn = true, orthoOn = false, spaceDown = false, shiftDown = false, usedTouch = false;
   var history = [], histIdx = -1;
   var colors = {};
@@ -90,7 +102,7 @@
   /* Utilidades                                                          */
   /* ------------------------------------------------------------------ */
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
-  function fmt(m) { return U.formatLength(m, units); }
+  function fmt(m) { return U.formatLength(m, units, units === 'ft' ? precision.ft : precision.m); }
 
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -120,11 +132,19 @@
   function w2s(p) { return [(p[0] - view.cx) * view.scale + W / 2, H / 2 - (p[1] - view.cy) * view.scale]; }
   function s2w(sx, sy) { return [(sx - W / 2) / view.scale + view.cx, view.cy - (sy - H / 2) / view.scale]; }
 
-  function gridStep() {
+  function autoStep() {
     var list = units === 'ft' ? GRID_STEPS_FT.map(function (x) { return x * U.FT; }) : GRID_STEPS_M;
     for (var i = 0; i < list.length; i++) if (list[i] * view.scale >= 14) return list[i];
     return list[list.length - 1];
   }
+  /** Espaciado visible de la cuadrícula. Si es fijo y se aleja el zoom, se agrupa para que no se amontone. */
+  function gridStep() {
+    if (!gridCfg.step) return autoStep();
+    var mult = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+    for (var i = 0; i < mult.length; i++) if (gridCfg.step * mult[i] * view.scale >= 8) return gridCfg.step * mult[i];
+    return gridCfg.step * 5000;
+  }
+  function snapStep() { return gridCfg.snapStep > 0 ? gridCfg.snapStep : gridStep(); }
 
   function layerColor(l, dim) {
     var dark = theme === 'dark';
@@ -165,7 +185,7 @@
     }
     var south = wall(0, 0, 36, 0, 0.667), east = wall(36, 0, 36, 24, 0.667);
     var north = wall(36, 24, 0, 24, 0.667), west = wall(0, 24, 0, 0, 0.667);
-    var part = wall(22, 0, 22, 24, 0.333), bath = wall(22, 13, 36, 13, 0.333);
+    var part = wall(22, 0, 22, 24, 0.375), bath = wall(22, 13, 36, 13, 0.375);
     opening('door', south, 8, 3, false);
     opening('door', part, 18.5, 2.667, true);
     opening('door', bath, 4.2, 2.5, true);
@@ -262,7 +282,7 @@
     }, 350);
   }
   function savePrefs() {
-    try { localStorage.setItem(STORE_PREFS, JSON.stringify({ units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings })); } catch (e) { /* nada */ }
+    try { localStorage.setItem(STORE_PREFS, JSON.stringify({ units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc, precision: precision })); } catch (e) { /* nada */ }
   }
   function loadPrefs() {
     try {
@@ -273,6 +293,9 @@
         if (typeof p.snapOn === 'boolean') snapOn = p.snapOn;
         if (typeof p.orthoOn === 'boolean') orthoOn = p.orthoOn;
         if (p.settings && isNum(p.settings.wallT) && isNum(p.settings.doorW) && isNum(p.settings.winW)) settings = p.settings;
+        if (p.grid && typeof p.grid.show === 'boolean' && isNum(p.grid.step) && p.grid.step >= 0 && isNum(p.grid.snapStep) && p.grid.snapStep >= 0 && [2, 4, 5, 8, 10].indexOf(p.grid.major) >= 0) gridCfg = p.grid;
+        if ([0, 15, 30, 45, 90].indexOf(p.polar) >= 0) polarInc = p.polar;
+        if (p.precision && [1, 2, 4, 8, 16].indexOf(p.precision.ft) >= 0 && [0, 1, 2, 3].indexOf(p.precision.m) >= 0) precision = p.precision;
         return true;
       }
     } catch (e) { /* nada */ }
@@ -335,6 +358,7 @@
   }
 
   function drawGrid() {
+    if (!gridCfg.show) return;
     var step = gridStep();
     var a = s2w(0, H), b = s2w(W, 0);
     var i0 = Math.floor(a[0] / step), i1 = Math.ceil(b[0] / step);
@@ -343,12 +367,12 @@
     var i, j, s, path;
     for (i = i0; i <= i1; i++) {
       s = Math.round(w2s([i * step, 0])[0]) + 0.5;
-      path = (i % 5 === 0) ? major : minor;
+      path = (i % gridCfg.major === 0) ? major : minor;
       path.moveTo(s, 0); path.lineTo(s, H);
     }
     for (j = j0; j <= j1; j++) {
       s = Math.round(w2s([0, j * step])[1]) + 0.5;
-      path = (j % 5 === 0) ? major : minor;
+      path = (j % gridCfg.major === 0) ? major : minor;
       path.moveTo(0, s); path.lineTo(W, s);
     }
     ctx.lineWidth = 1;
@@ -519,12 +543,20 @@
       } else {
         ctx.setLineDash([6, 5]); pathPoly([last, p], false); ctx.stroke(); ctx.setLineDash([]);
       }
+      if (mouse.polar !== null) {
+        var g0 = w2s(last), pr = mouse.polar * Math.PI / 180;
+        ctx.save(); ctx.globalAlpha = 0.45; ctx.setLineDash([2, 5]); ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(g0[0] - Math.cos(pr) * 4000, g0[1] + Math.sin(pr) * 4000);
+        ctx.lineTo(g0[0] + Math.cos(pr) * 4000, g0[1] - Math.sin(pr) * 4000);
+        ctx.stroke(); ctx.restore();
+      }
       pts.forEach(dot);
       if (dirLen > 1e-9) {
         var ang = Math.atan2(p[1] - last[1], p[0] - last[0]) * 180 / Math.PI;
         if (ang < 0) ang += 360;
         S = w2s(p);
-        drawTag(fmt(dirLen) + '  ∠ ' + (Math.round(ang * 10) / 10) + '°', S[0], S[1], true);
+        drawTag(fmt(dirLen) + '  ∠ ' + (Math.round(ang * 10) / 10) + '°' + (mouse.polar !== null ? '  polar' : ''), S[0], S[1], true);
       }
     } else if (draft.tool === 'rect') {
       var rc = G.rectCorners({ a: last, b: p });
@@ -594,13 +626,28 @@
     mouse.sx = sx; mouse.sy = sy;
     mouse.raw = s2w(sx, sy);
     var s;
-    if (snapOn) s = G.findSnap(mouse.raw, snapTargets(), { tol: SNAP_PX / view.scale, grid: gridStep(), useGrid: true });
+    if (snapOn) s = G.findSnap(mouse.raw, snapTargets(), { tol: SNAP_PX / view.scale, grid: snapStep(), useGrid: true });
     else s = { p: mouse.raw.slice(), kind: 'free' };
     var p = s.p;
     var last = lastDraftPoint();
     var ortho = orthoOn !== !!shift;
-    if (ortho && last && (tool === 'line' || tool === 'wall' || tool === 'polyline') && s.kind !== 'end' && s.kind !== 'mid') {
+    var lineTool = tool === 'line' || tool === 'wall' || tool === 'polyline';
+    mouse.polar = null;
+    if (ortho && last && lineTool && s.kind !== 'end' && s.kind !== 'mid') {
       p = G.orthoPoint(last, p);
+    } else if (polarInc > 0 && last && lineTool && s.kind !== 'end' && s.kind !== 'mid') {
+      // ángulo polar: se engancha cuando el cursor está a menos de 6° de un múltiplo del ángulo elegido
+      var v = G.sub(mouse.raw, last), L = G.len(v);
+      if (L > 1e-9) {
+        var inc = polarInc * Math.PI / 180, ang = Math.atan2(v[1], v[0]);
+        var a2 = Math.round(ang / inc) * inc;
+        if (Math.abs(ang - a2) <= 6 * Math.PI / 180) {
+          var st = snapOn ? snapStep() : 0;
+          var d = st > 0 ? Math.max(st, Math.round(L / st) * st) : L;
+          p = [last[0] + Math.cos(a2) * d, last[1] + Math.sin(a2) * d];
+          mouse.polar = ((a2 * 180 / Math.PI) % 360 + 360) % 360;
+        }
+      }
     }
     mouse.p = p; mouse.snap = s;
     updateReadout();
@@ -999,6 +1046,7 @@
     if (e.key === 'Enter') { if (draft) { e.preventDefault(); finishDraft(); } return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
     if (e.key === 'F3') { e.preventDefault(); toggleSnap(); return; }
+    if (e.key === 'F7') { e.preventDefault(); toggleGrid(); return; }
     if (e.key === 'F8') { e.preventDefault(); toggleOrtho(); return; }
 
     if (needsInput() && /^[0-9.'"<,\-]$/.test(e.key)) { cmdInput.focus(); return; }   // el carácter cae en la casilla
@@ -1131,7 +1179,17 @@
     var box = $('options');
     box.textContent = '';
     var showed = false;
-    function field(label, value, onSet) {
+    function presetSelect(list, onSet) {
+      var sel = el('select', { 'aria-label': 'Medidas comunes' });
+      sel.appendChild(el('option', { value: '', text: 'Comunes' }));
+      list.forEach(function (it) { sel.appendChild(el('option', { value: String(it[1]), text: it[0] })); });
+      sel.addEventListener('change', function () {
+        var m = parseFloat(sel.value);
+        if (m > 0) { onSet(m); savePrefs(); uiSync(); requestRender(); }
+      });
+      return sel;
+    }
+    function field(label, value, onSet, presets) {
       var inp = el('input', { type: 'text', value: value, inputmode: 'text', 'aria-label': label });
       inp.addEventListener('change', function () {
         var m = U.parseLength(inp.value, units);
@@ -1139,12 +1197,15 @@
         onSet(m); savePrefs(); uiSync(); requestRender();
       });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
-      box.appendChild(el('label', { class: 'opt' }, [el('span', { class: 'opt-name', text: label }), inp]));
+      box.appendChild(el('label', { class: 'opt' }, [el('span', { class: 'opt-name', text: label }), inp, presets ? presetSelect(presets, onSet) : null]));
       showed = true;
     }
-    if (tool === 'wall') field('Espesor', fmt(settings.wallT), function (m) { settings.wallT = m; });
-    if (tool === 'door') field('Ancho de puerta', fmt(settings.doorW), function (m) { settings.doorW = m; });
-    if (tool === 'window') field('Ancho de ventana', fmt(settings.winW), function (m) { settings.winW = m; });
+    if (tool === 'wall') field('Espesor', fmt(settings.wallT), function (m) { settings.wallT = m; },
+      WALL_PRESETS.map(function (w) { return [w[0] + ' · ' + fmt(w[1]), w[1]]; }));
+    if (tool === 'door') field('Ancho de puerta', fmt(settings.doorW), function (m) { settings.doorW = m; },
+      DOOR_PRESETS[units].map(function (m) { return [fmt(m), m]; }));
+    if (tool === 'window') field('Ancho de ventana', fmt(settings.winW), function (m) { settings.winW = m; },
+      WINDOW_PRESETS[units].map(function (m) { return [fmt(m), m]; }));
     if (tool === 'line' || tool === 'polyline' || tool === 'rect' || tool === 'circle') {
       var sel = el('select', { 'aria-label': 'Capa activa' });
       doc.layers.forEach(function (l) { var o = el('option', { value: l.id, text: l.name }); if (l.id === doc.activeLayer) o.selected = true; sel.appendChild(o); });
@@ -1208,6 +1269,54 @@
     });
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
     return inp;
+  }
+
+  function cfgChanged() {
+    savePrefs(); uiSync();
+    updateCursor(mouse.sx, mouse.sy, shiftDown);
+    requestRender();
+  }
+  function selectEl(options, value, onChange, label) {
+    var sel = el('select', { 'aria-label': label });
+    options.forEach(function (o) {
+      var op = el('option', { value: String(o[1]), text: o[0] });
+      if (Math.abs(o[1] - value) < 1e-9) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener('change', function () { onChange(parseFloat(sel.value)); });
+    return sel;
+  }
+  function stepSelect(value, defaultLabel, label, onSet) {
+    var presets = units === 'ft' ? STEP_PRESETS_FT : STEP_PRESETS_M;
+    var opts = [[defaultLabel, 0]].concat(presets.map(function (p) { return [p.label, p.m]; }));
+    var known = opts.some(function (o) { return Math.abs(o[1] - value) < 1e-9; });
+    if (!known && value > 0) opts.push([fmt(value) + ' (otro)', value]);
+    return selectEl(opts, value, onSet, label);
+  }
+
+  function renderGridCfg() {
+    var box = $('gridcfg');
+    box.textContent = '';
+    box.appendChild(propRow('Espaciado', stepSelect(gridCfg.step, 'Automático', 'Espaciado de la cuadrícula', function (v) { gridCfg.step = v; cfgChanged(); })));
+    var other = el('input', { type: 'text', placeholder: units === 'ft' ? 'Otro: 8" o 2\'6"' : 'Otro: 25cm o 0.4', 'aria-label': 'Otro espaciado' });
+    other.addEventListener('change', function () {
+      var m = U.parseLength(other.value, units);
+      other.value = '';
+      if (isNaN(m) || m < 0.002) { toast('Medida no válida.'); return; }
+      gridCfg.step = m; cfgChanged();
+    });
+    other.addEventListener('keydown', function (e) { if (e.key === 'Enter') other.blur(); });
+    box.appendChild(propRow('Otro', other));
+    box.appendChild(propRow('Líneas gruesas', selectEl([['Cada 2', 2], ['Cada 4', 4], ['Cada 5', 5], ['Cada 8', 8], ['Cada 10', 10]], gridCfg.major, function (v) { gridCfg.major = v; cfgChanged(); }, 'Líneas gruesas')));
+    box.appendChild(propRow('Paso del snap', stepSelect(gridCfg.snapStep, 'Igual a la cuadrícula', 'Paso del snap', function (v) { gridCfg.snapStep = v; cfgChanged(); })));
+    box.appendChild(propRow('Ángulo polar', selectEl([['Apagado', 0], ['15°', 15], ['30°', 30], ['45°', 45], ['90°', 90]], polarInc, function (v) { polarInc = v; cfgChanged(); }, 'Ángulo polar')));
+    var precOpts = units === 'ft'
+      ? [['1"', 1], ['1/2"', 2], ['1/4"', 4], ['1/8"', 8], ['1/16"', 16]]
+      : [['Automática', 0], ['0.1 m', 1], ['0.01 m (cm)', 2], ['0.001 m (mm)', 3]];
+    box.appendChild(propRow('Precisión', selectEl(precOpts, units === 'ft' ? precision.ft : precision.m, function (v) {
+      if (units === 'ft') precision.ft = v; else precision.m = v;
+      cfgChanged();
+    }, 'Precisión de las medidas')));
   }
 
   function renderProps() {
@@ -1278,6 +1387,7 @@
     $('btn-redo').disabled = histIdx >= history.length - 1;
     $('cmd-hint').textContent = hintText();
     $('cmd-hint').title = hintText();
+    $('tog-grid').setAttribute('aria-pressed', String(gridCfg.show));
     $('tog-snap').setAttribute('aria-pressed', String(snapOn));
     $('tog-ortho').setAttribute('aria-pressed', String(orthoOn));
     $('u-ft').setAttribute('aria-pressed', String(units === 'ft'));
@@ -1290,10 +1400,12 @@
     $('btn-theme').appendChild(svgIcon(theme === 'dark' ? 'sun' : 'moon', 20));
     refreshOptions();
     renderLayers();
+    renderGridCfg();
     renderProps();
     updateReadout();
   }
 
+  function toggleGrid() { gridCfg.show = !gridCfg.show; savePrefs(); uiSync(); requestRender(); }
   function toggleSnap() { snapOn = !snapOn; savePrefs(); uiSync(); updateCursor(mouse.sx, mouse.sy, shiftDown); requestRender(); }
   function toggleOrtho() { orthoOn = !orthoOn; savePrefs(); uiSync(); updateCursor(mouse.sx, mouse.sy, shiftDown); requestRender(); }
 
@@ -1372,6 +1484,7 @@
   $('act-rot').addEventListener('click', rotateSelection);
   $('tb-done').addEventListener('click', function () { if (draft) finishDraft(); });
   $('tb-cancel').addEventListener('click', cancelDraft);
+  $('tog-grid').addEventListener('click', toggleGrid);
   $('tog-snap').addEventListener('click', toggleSnap);
   $('tog-ortho').addEventListener('click', toggleOrtho);
   $('u-ft').addEventListener('click', function () { setUnits('ft'); });

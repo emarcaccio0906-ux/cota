@@ -61,21 +61,23 @@
     return str.indexOf('.') >= 0 ? str.replace(/0+$/, '').replace(/\.$/, '') : str;
   }
 
-  /** Pies-pulgadas estilo plano arquitectónico: 12'-6 1/2" (redondea a 1/16"). */
-  function formatFtIn(meters) {
+  /** Pies-pulgadas estilo plano arquitectónico: 12'-6 1/2".
+   *  denom = fracción más fina de pulgada que se muestra (1, 2, 4, 8 o 16). Por defecto 16. */
+  function formatFtIn(meters, denom) {
+    var den = denom && denom >= 1 ? Math.round(denom) : 16;
     var sign = meters < 0 ? '-' : '';
-    var inches = Math.round(Math.abs(meters) / IN * 16) / 16;
+    var inches = Math.round(Math.abs(meters) / IN * den) / den;
     var ft = Math.floor(inches / 12 + 1e-9);
     var rem = inches - ft * 12;
     var whole = Math.floor(rem + 1e-9);
-    var frac = Math.round((rem - whole) * 16);
-    if (frac === 16) { whole += 1; frac = 0; }
+    var frac = Math.round((rem - whole) * den);
+    if (frac === den) { whole += 1; frac = 0; }
     if (whole === 12) { ft += 1; whole = 0; }
 
     var fracStr = '';
     if (frac) {
-      var n = frac, d = 16;
-      while (n % 2 === 0) { n /= 2; d /= 2; }
+      var n = frac, d = den;
+      while (n % 2 === 0 && d > 1) { n /= 2; d /= 2; }
       fracStr = n + '/' + d;
     }
     var inchPart = (whole ? String(whole) : '') + (fracStr ? (whole ? ' ' : '') + fracStr : '');
@@ -85,15 +87,18 @@
     return sign + ft + "'-" + inchPart + '"';
   }
 
-  function formatMeters(meters) {
+  /** Metros. decimals = cuántos decimales mostrar (0 o vacío = automático). */
+  function formatMeters(meters, decimals) {
     var v = Math.abs(meters);
-    var out = trimZeros(v.toFixed(3));
-    if (v >= 1) out = trimZeros(v.toFixed(2));
+    var out;
+    if (decimals && decimals > 0) out = trimZeros(v.toFixed(Math.min(decimals, 4)));
+    else out = v >= 1 ? trimZeros(v.toFixed(2)) : trimZeros(v.toFixed(3));
     return (meters < 0 ? '-' : '') + out + ' m';
   }
 
-  function formatLength(meters, displayUnit) {
-    return displayUnit === 'ft' ? formatFtIn(meters) : formatMeters(meters);
+  /** prec: en pies es el denominador de la fracción (1, 2, 4, 8, 16); en metros son los decimales. */
+  function formatLength(meters, displayUnit, prec) {
+    return displayUnit === 'ft' ? formatFtIn(meters, prec) : formatMeters(meters, prec);
   }
 
   /** Área: pies² o m². */

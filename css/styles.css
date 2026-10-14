@@ -168,6 +168,7 @@ button { cursor: pointer; }
 }
 .opt input { width: 84px; height: 32px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-variant-numeric: tabular-nums; }
 .opt .opt-name { color: var(--text); font-weight: 600; }
+.opt select { height: 32px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); padding: 0 6px; max-width: 160px; }
 
 .sel-count { padding: 0 10px; color: var(--muted); font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; height: 38px; display: inline-flex; align-items: center; box-shadow: var(--shadow); }
 .chip-btn {
