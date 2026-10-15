@@ -11,6 +11,7 @@
   'use strict';
 
   var G = (typeof module !== 'undefined' && module.exports) ? require('./geom.js') : root.CotaGeom;
+  var F = (typeof module !== 'undefined' && module.exports) ? require('./furniture.js') : root.CotaFurn;
 
   var DEFAULTS = {
     wallH: 2.4384,      // 8'
@@ -63,6 +64,10 @@
         add('trim', hi - 0.045, hi, 0, head, tw);
         add('trim', lo + 0.045, hi - 0.045, head - 0.045, head, tw);
 
+        if (op.roll) {                                             // portón enrollable: subido, no estorba
+          add('trim', lo + 0.045, hi - 0.045, head - 0.25, head, w.t + 0.04);
+          return;
+        }
         var g = G.openingGeom(op, w);
         var len = Math.max(0.2, op.w - 0.09);
         var th = o.doorAngle * Math.PI / 180;
@@ -197,12 +202,22 @@
     flood(border, 0, 2, null);
 
     var rooms = [], enclosed = 0, c2 = cell * cell;
+    var label = new Uint16Array(nx * ny);       // cuarto al que pertenece cada celda (índice + 1), 0 = ninguno
     for (var k0 = 0; k0 < nx * ny; k0++) {
       if (st[k0] !== 0) continue;
       var col = { cells: [] };
       var r = flood([k0], 0, 3, col);
       enclosed += r.n;
-      var area = r.n * c2;
+      // las paredes se pintan engordadas media celda; se devuelve esa franja para que el área salga casi exacta
+      var edges = 0;
+      for (var q0 = 0; q0 < col.cells.length; q0++) {
+        var k1 = col.cells[q0], i1 = k1 % nx, j1 = (k1 - i1) / nx;
+        if (i1 > 0 && st[k1 - 1] === 1) edges++;
+        if (i1 < nx - 1 && st[k1 + 1] === 1) edges++;
+        if (j1 > 0 && st[k1 - nx] === 1) edges++;
+        if (j1 < ny - 1 && st[k1 + nx] === 1) edges++;
+      }
+      var area = (r.n + edges / 2) * c2;
       if (area < 0.5) continue;
       var cxI = r.sx / r.n, cyI = r.sy / r.n, best = -1, bestD = Infinity;
       for (var q = 0; q < col.cells.length; q++) {
@@ -211,7 +226,9 @@
         if (dd < bestD) { bestD = dd; best = kk; }
       }
       var bi = best % nx, bj = (best - bi) / nx;
-      rooms.push({ area: area, cx: ox + (cxI + 0.5) * cell, cy: oy + (cyI + 0.5) * cell, x: ox + (bi + 0.5) * cell, y: oy + (bj + 0.5) * cell });
+      var rid = rooms.length;
+      for (var q2 = 0; q2 < col.cells.length; q2++) label[col.cells[q2]] = rid + 1;
+      rooms.push({ id: rid, area: area, cx: ox + (cxI + 0.5) * cell, cy: oy + (cyI + 0.5) * cell, x: ox + (bi + 0.5) * cell, y: oy + (bj + 0.5) * cell });
     }
     rooms.sort(function (p, q) { return q.area - p.area; });
 
@@ -231,13 +248,46 @@
 
     var cx0 = (minx + maxx) / 2, cy0 = (miny + maxy) / 2;
     return {
-      ok: true, ox: ox, oy: oy, nx: nx, ny: ny, cell: cell, floor: floor,
+      ok: true, ox: ox, oy: oy, nx: nx, ny: ny, cell: cell, floor: floor, label: label,
       rooms: rooms, enclosedArea: enclosed * c2,
       start: rooms.length ? [rooms[0].x, rooms[0].y] : [cx0, cy0]
     };
   }
 
-  var api = { DEFAULTS: DEFAULTS, withDefaults: withDefaults, build: build, wallParts: wallParts, floorMask: floorMask };
+  /** Cuarto cerrado que contiene el punto (x, y), o null. Necesita el resultado de floorMask. */
+  function roomAt(mask, x, y) {
+    if (!mask || !mask.ok) return null;
+    var i = Math.floor((x - mask.ox) / mask.cell), j = Math.floor((y - mask.oy) / mask.cell);
+    if (i < 0 || j < 0 || i >= mask.nx || j >= mask.ny) return null;
+    var l = mask.label[j * mask.nx + i];
+    if (!l) return null;
+    for (var k = 0; k < mask.rooms.length; k++) if (mask.rooms[k].id === l - 1) return mask.rooms[k];
+    return null;
+  }
+
+  /** Copia del piso con un hueco donde está el rectángulo del mueble f (para el hueco de una escalera). */
+  function carve(mask, arr, f, pad) {
+    var cs = F.corners(f), minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    cs.forEach(function (p) { minx = Math.min(minx, p[0]); miny = Math.min(miny, p[1]); maxx = Math.max(maxx, p[0]); maxy = Math.max(maxy, p[1]); });
+    var i0 = Math.max(0, Math.floor((minx - mask.ox) / mask.cell)), i1 = Math.min(mask.nx - 1, Math.ceil((maxx - mask.ox) / mask.cell));
+    var j0 = Math.max(0, Math.floor((miny - mask.oy) / mask.cell)), j1 = Math.min(mask.ny - 1, Math.ceil((maxy - mask.oy) / mask.cell));
+    for (var j = j0; j <= j1; j++) {
+      for (var i = i0; i <= i1; i++) {
+        if (F.contains(f, mask.ox + (i + 0.5) * mask.cell, mask.oy + (j + 0.5) * mask.cell, pad || 0)) arr[j * mask.nx + i] = 0;
+      }
+    }
+    return arr;
+  }
+
+  /** Piezas 3D de un mueble. rise = altura que salva una escalera. */
+  function furnParts(f, rise) {
+    var a = (f.ang || 0) * Math.PI / 180;
+    return F.boxes(f.kind, f.w, f.d, rise).map(function (b) {
+      return { kind: 'furn', color: b.color, c: F.toWorld(f, b.x, b.y), ang: a, len: b.w, thick: b.d, h0: b.h0, h1: b.h1, furn: f.id };
+    });
+  }
+
+  var api = { DEFAULTS: DEFAULTS, roomAt: roomAt, carve: carve, furnParts: furnParts, withDefaults: withDefaults, build: build, wallParts: wallParts, floorMask: floorMask };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CotaModel3D = api;
 })(this);

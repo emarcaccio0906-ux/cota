@@ -326,3 +326,53 @@ dialog::backdrop { background: rgba(5, 10, 18, 0.6); }
   .cam3bar .chip-btn { padding: 0 10px; }
   .top-left { gap: 6px; }
 }
+
+/* ---------- pisos, plantillas y proyectos ---------- */
+.bottom-left { left: 12px; bottom: 14px; }
+#levelbar { gap: 6px; pointer-events: none; flex-wrap: wrap; max-width: calc(100% - 24px); }
+#levelbar > * { pointer-events: auto; }
+.lvl-chip { height: 34px; padding: 0 12px; border-radius: 9px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); box-shadow: var(--shadow); font-size: 13px; }
+.lvl-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 600; }
+.level-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+#levels .layer { grid-template-columns: 14px minmax(0, 1fr) 34px; }
+#levels .lvl-n { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
+
+dialog.wide { max-width: min(640px, calc(100% - 24px)); width: 100%; }
+dialog.wide .dlg-body { max-height: min(86vh, 720px); overflow-y: auto; }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.tpl { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); }
+.tpl:hover, .tpl:focus-visible { border-color: var(--accent); }
+.tpl canvas { width: 100%; aspect-ratio: 16 / 11; border-radius: 8px; background: var(--canvas); display: block; }
+.tpl b { font-size: 14px; }
+.tpl span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+
+.proj-head { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
+.proj-head h3 { margin: 0 0 6px; }
+.plan-tag { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; white-space: normal; }
+.proj-list { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.proj { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel-2); }
+.proj.current { border-color: var(--accent); background: var(--accent-soft); }
+.proj canvas, .proj img { width: 96px; height: 66px; border-radius: 8px; background: var(--canvas); object-fit: cover; display: block; }
+.proj input { width: 100%; height: 32px; border: 1px solid transparent; background: transparent; color: var(--text); font-weight: 600; border-radius: 6px; padding: 0 6px; }
+.proj input:hover, .proj input:focus { border-color: var(--line); background: var(--panel); }
+.proj .meta { color: var(--muted); font-size: 12px; padding: 0 6px; }
+.proj-actions { display: flex; flex-direction: column; gap: 6px; }
+.proj-actions .chip-btn { height: 30px; padding: 0 10px; font-size: 13px; box-shadow: none; }
+.pro-note { font-size: 13px; }
+.proj-ico svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.proj-btn { gap: 8px; }
+@media (max-width: 640px) {
+  .proj { grid-template-columns: 72px minmax(0, 1fr); }
+  .proj canvas, .proj img { width: 72px; height: 52px; }
+  .proj-actions { grid-column: 1 / -1; flex-direction: row; }
+  .proj-btn { padding: 0 8px; }
+}
+
+.opt-dim { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opt-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); white-space: nowrap; }
+.opt-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.opt .chip-btn { height: 32px; padding: 0 10px; box-shadow: none; font-size: 13px; }
+.opt { flex-wrap: wrap; row-gap: 4px; }
+.prop-row .opt-check input { width: 18px; height: 18px; }
+#ask-input { width: 100%; height: 40px; padding: 0 12px; margin: 0 0 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-size: 16px; }
+#app.mode-3d #levelbar { display: none; }

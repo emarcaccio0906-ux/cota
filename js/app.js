@@ -1,10 +1,13 @@
-/* Cota — editor 2D de planos (prototipo, fases 1 y 2).
+/* Cota — editor de planos 2D con vista 3D, muebles, varios pisos y proyectos.
  * Todo en un solo archivo, sin dependencias. Unidades internas: metros, Y hacia arriba. */
 (function () {
   'use strict';
 
   var U = window.CotaUnits;
   var G = window.CotaGeom;
+  var F = window.CotaFurn;
+  var TPL = window.CotaTemplates;
+  var M3 = window.CotaModel3D;
 
   /* ------------------------------------------------------------------ */
   /* Constantes                                                          */
@@ -26,8 +29,12 @@
   var WINDOW_PRESETS = { ft: [24, 36, 48, 60, 72].map(function (i) { return i * IN_M; }), m: [0.6, 0.9, 1.2, 1.5, 1.8] };
   var STORE_DOC = 'cota:doc:v1';
   var STORE_PREFS = 'cota:prefs:v1';
+  var STORE_INDEX = 'cota:projects:v1';
+  var STORE_PROJECT = 'cota:p:';
+  var LIMITS = { projects: 3, levels: 2 };      // plan gratis; el modo de pruebas los quita
+  var MAX_LEVELS = 12;
   var DRAW_TOOLS = ['line', 'polyline', 'rect', 'circle', 'wall', 'door', 'window', 'dim'];
-  var TYPE_NAMES = { line: 'Línea', polyline: 'Polilínea', rect: 'Rectángulo', circle: 'Círculo', wall: 'Pared', door: 'Puerta', window: 'Ventana', dim: 'Cota' };
+  var TYPE_NAMES = { line: 'Línea', polyline: 'Polilínea', rect: 'Rectángulo', circle: 'Círculo', wall: 'Pared', door: 'Puerta', window: 'Ventana', dim: 'Cota', furn: 'Mueble', room: 'Cuarto' };
 
   var ICONS = {
     select: '<path d="M6 3l13 7-5.5 1.6L11 17z"/>',
@@ -49,7 +56,10 @@
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/>',
     eyeoff: '<path d="M3 3l18 18M9.9 5.7A9 9 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-3.2 3.9M6.1 7.4A15.5 15.5 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4-.9"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
-    unlock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-1.9"/>'
+    unlock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-1.9"/>',
+    room: '<rect x="4" y="5" width="16" height="14"/><path d="M8 11h8M8 14.5h5"/>',
+    furn: '<path d="M4 17v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5M4 17h16M6 10V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2M6 17v2M18 17v2"/>',
+    folder: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'
   };
 
   var TOOLS = [
@@ -66,13 +76,19 @@
     { id: 'window', key: 'n', label: 'Ventana', name: 'Ventana' },
     { id: 'dim', key: 'm', label: 'Cota', name: 'Cota (medida)' },
     'sep',
+    { id: 'room', key: 'q', label: 'Cuarto', name: 'Cuarto: nombre y área' },
+    { id: 'furn', key: 'u', label: 'Mueble', name: 'Muebles y escaleras' },
+    'sep',
     { id: 'fit', key: 'f', label: 'Todo', name: 'Ver todo el dibujo', action: true }
   ];
 
   /* ------------------------------------------------------------------ */
   /* Estado                                                              */
   /* ------------------------------------------------------------------ */
-  var doc = { layers: [], objects: [], nextId: 1, activeLayer: 'dibujo' };
+  var doc = { layers: [], objects: [], nextId: 1, activeLayer: 'dibujo', levels: [{ id: 'p1', name: 'Planta baja' }], level: 'p1' };
+  var projects = [], curId = '', pro = false, showAreas = true;
+  var furnKind = 'cama-queen', furnRot = 0, furnAlign = true;
+  var roomCache = { key: '', mask: null };
   var units = 'ft';
   var theme = 'dark';
   var view = { cx: 0, cy: 0, scale: BASE_SCALE };
@@ -89,7 +105,8 @@
   var colors = {};
   var W = 300, H = 300, DPR = 1;
   var mode = '2d', view3d = null, cam3 = 'orbit';
-  var s3 = { wallH: 2.4384, wallColor: 'blanco', floor: 'madera-clara', hour: 14, shadows: true, roof: false, doors: 90, cut: 0 };
+  var s3 = { wallH: 2.4384, wallColor: 'blanco', floor: 'madera-clara', hour: 14, shadows: true, roof: 'none', doors: 90, cut: 0, level: 'all' };
+  var ROOF_OPTS = [['none', 'Sin techo'], ['flat', 'Techo plano'], ['gable', 'A dos aguas']];
   var WALL_OPTS = [['blanco', 'Blanco'], ['crema', 'Crema'], ['concreto', 'Concreto'], ['gris', 'Gris oscuro'], ['ladrillo', 'Ladrillo'], ['pizarra', 'Azul pizarra']];
   var FLOOR_OPTS = [['madera-clara', 'Madera clara'], ['madera-oscura', 'Madera oscura'], ['concreto', 'Concreto pulido'], ['baldosa-blanca', 'Baldosa blanca'], ['baldosa-gris', 'Baldosa gris']];
   var HEIGHT_PRESETS = { ft: [8, 9, 10, 12].map(function (f) { return f * 0.3048; }), m: [2.4, 2.7, 3, 3.6] };
@@ -132,8 +149,12 @@
   function idMap() { var m = {}; doc.objects.forEach(function (o) { m[o.id] = o; }); return m; }
   function layerById(id) { for (var i = 0; i < doc.layers.length; i++) if (doc.layers[i].id === id) return doc.layers[i]; return null; }
   function layerOf(o) { return layerById(o.layer) || doc.layers[0]; }
-  function isVisible(o) { return layerOf(o).visible; }
+  function onLevel(o) { return !o.lv || o.lv === doc.level; }
+  function layerShown(o) { return layerOf(o).visible; }                 // visible por capa (en 3D se ven todos los pisos)
+  function isVisible(o) { return layerOf(o).visible && onLevel(o); }   // visible y en el piso que se edita
   function isLocked(o) { return layerOf(o).locked; }
+  function levelIndex(id) { for (var i = 0; i < doc.levels.length; i++) if (doc.levels[i].id === id) return i; return -1; }
+  function levelName(id) { var i = levelIndex(id); return i >= 0 ? doc.levels[i].name : ''; }
 
   function w2s(p) { return [(p[0] - view.cx) * view.scale + W / 2, H / 2 - (p[1] - view.cy) * view.scale]; }
   function s2w(sx, sy) { return [(sx - W / 2) / view.scale + view.cx, view.cy - (sy - H / 2) / view.scale]; }
@@ -174,20 +195,27 @@
       { id: 'dibujo', name: 'Dibujo', hue: 195, sat: 85, ld: 66, ll: 36, visible: true, locked: false },
       { id: 'paredes', name: 'Paredes', hue: 215, sat: 16, ld: 84, ll: 24, visible: true, locked: false },
       { id: 'aberturas', name: 'Aberturas', hue: 36, sat: 95, ld: 62, ll: 36, visible: true, locked: false },
-      { id: 'cotas', name: 'Cotas', hue: 145, sat: 55, ld: 62, ll: 30, visible: true, locked: false }
+      { id: 'cotas', name: 'Cotas', hue: 145, sat: 55, ld: 62, ll: 30, visible: true, locked: false },
+      { id: 'muebles', name: 'Muebles', hue: 32, sat: 60, ld: 68, ll: 38, visible: true, locked: false },
+      { id: 'cuartos', name: 'Cuartos', hue: 160, sat: 45, ld: 72, ll: 32, visible: true, locked: false }
     ];
+  }
+  /** Las capas de muebles y cuartos no existían en dibujos viejos: se crean al primer uso. */
+  function ensureLayer(id) {
+    if (layerById(id)) return;
+    defaultLayers().forEach(function (l) { if (l.id === id) doc.layers.push(l); });
   }
   var EXTRA_HUES = [285, 345, 62, 170, 18, 230];
 
   function buildExample() {
     var f = function (x) { return x * U.FT; };
-    var d = { layers: defaultLayers(), objects: [], nextId: 1, activeLayer: 'dibujo' };
+    var d = { layers: defaultLayers(), objects: [], nextId: 1, activeLayer: 'dibujo', levels: [{ id: 'p1', name: 'Planta baja' }], level: 'p1' };
     function wall(ax, ay, bx, by, t) {
-      var o = { id: d.nextId++, type: 'wall', layer: 'paredes', a: [f(ax), f(ay)], b: [f(bx), f(by)], t: f(t) };
+      var o = { id: d.nextId++, type: 'wall', lv: 'p1', layer: 'paredes', a: [f(ax), f(ay)], b: [f(bx), f(by)], t: f(t) };
       d.objects.push(o); return o;
     }
     function opening(type, wl, pos, w, flip) {
-      d.objects.push({ id: d.nextId++, type: type, layer: 'aberturas', wall: wl.id, pos: f(pos), w: f(w), flip: !!flip });
+      d.objects.push({ id: d.nextId++, type: type, lv: 'p1', layer: 'aberturas', wall: wl.id, pos: f(pos), w: f(w), flip: !!flip });
     }
     var south = wall(0, 0, 36, 0, 0.667), east = wall(36, 0, 36, 24, 0.667);
     var north = wall(36, 24, 0, 24, 0.667), west = wall(0, 24, 0, 0, 0.667);
@@ -199,9 +227,9 @@
     opening('window', north, 28.5, 5, false);
     opening('window', east, 6.5, 3.5, false);
     opening('window', west, 12, 4, false);
-    d.objects.push({ id: d.nextId++, type: 'dim', layer: 'cotas', a: [f(0), f(0)], b: [f(36), f(0)], off: -f(3) });
-    d.objects.push({ id: d.nextId++, type: 'dim', layer: 'cotas', a: [f(36), f(0)], b: [f(36), f(24)], off: -f(3) });
-    d.objects.push({ id: d.nextId++, type: 'dim', layer: 'cotas', a: [f(22), f(24)], b: [f(22), f(13)], off: -f(3) });
+    d.objects.push({ id: d.nextId++, type: 'dim', lv: 'p1', layer: 'cotas', a: [f(0), f(0)], b: [f(36), f(0)], off: -f(3) });
+    d.objects.push({ id: d.nextId++, type: 'dim', lv: 'p1', layer: 'cotas', a: [f(36), f(0)], b: [f(36), f(24)], off: -f(3) });
+    d.objects.push({ id: d.nextId++, type: 'dim', lv: 'p1', layer: 'cotas', a: [f(22), f(24)], b: [f(22), f(13)], off: -f(3) });
     return d;
   }
 
@@ -225,10 +253,18 @@
     var layerIds = {};
     layers.forEach(function (l) { layerIds[l.id] = true; });
 
+    var levels = [], lvSeen = {};
+    (Array.isArray(raw.levels) ? raw.levels : []).forEach(function (l) {
+      if (!l || typeof l.id !== 'string' || lvSeen[l.id] || levels.length >= MAX_LEVELS) return;
+      lvSeen[l.id] = true;
+      levels.push({ id: String(l.id).slice(0, 20), name: String(l.name || l.id).slice(0, 40) });
+    });
+    if (!levels.length) { levels = [{ id: 'p1', name: 'Planta baja' }]; lvSeen = { p1: true }; }
+
     var objects = [], seen = {}, maxId = 0, wallIds = {};
     raw.objects.forEach(function (o) {
       if (!o || !isNum(o.id) || seen[o.id]) return;
-      var base = { id: Math.floor(o.id), type: o.type, layer: layerIds[o.layer] ? o.layer : layers[0].id };
+      var base = { id: Math.floor(o.id), type: o.type, layer: layerIds[o.layer] ? o.layer : layers[0].id, lv: lvSeen[o.lv] ? o.lv : levels[0].id };
       var ok = false;
       switch (o.type) {
         case 'line': ok = isPt(o.a) && isPt(o.b); if (ok) { base.a = o.a.slice(); base.b = o.b.slice(); } break;
@@ -239,7 +275,15 @@
         case 'wall': ok = isPt(o.a) && isPt(o.b) && isNum(o.t) && o.t > 0; if (ok) { base.a = o.a.slice(); base.b = o.b.slice(); base.t = o.t; wallIds[base.id] = true; } break;
         case 'door': case 'window':
           ok = isNum(o.wall) && isNum(o.pos) && isNum(o.w) && o.w > 0;
-          if (ok) { base.wall = o.wall; base.pos = o.pos; base.w = o.w; base.flip = !!o.flip; }
+          if (ok) { base.wall = o.wall; base.pos = o.pos; base.w = o.w; base.flip = !!o.flip; if (o.roll && o.type === 'door') base.roll = true; }
+          break;
+        case 'furn':
+          ok = isPt(o.p) && isNum(o.w) && o.w > 0.05 && isNum(o.d) && o.d > 0.05 && typeof o.kind === 'string';
+          if (ok) { base.kind = String(o.kind).slice(0, 40); base.p = o.p.slice(); base.w = o.w; base.d = o.d; base.ang = isNum(o.ang) ? ((o.ang % 360) + 360) % 360 : 0; }
+          break;
+        case 'room':
+          ok = isPt(o.p);
+          if (ok) { base.p = o.p.slice(); base.name = String(o.name || 'Cuarto').slice(0, 60); }
           break;
         default: ok = false;
       }
@@ -250,13 +294,16 @@
     });
     objects = objects.filter(function (o) { return (o.type !== 'door' && o.type !== 'window') || wallIds[o.wall]; });
     var active = layerIds[raw.activeLayer] ? raw.activeLayer : layers[0].id;
-    return { layers: layers, objects: objects, nextId: Math.max(maxId + 1, isNum(raw.nextId) ? Math.floor(raw.nextId) : 1), activeLayer: active };
+    return {
+      layers: layers, objects: objects, nextId: Math.max(maxId + 1, isNum(raw.nextId) ? Math.floor(raw.nextId) : 1), activeLayer: active,
+      levels: levels, level: lvSeen[raw.level] ? raw.level : levels[0].id
+    };
   }
 
   /* ------------------------------------------------------------------ */
   /* Historial y guardado                                                */
   /* ------------------------------------------------------------------ */
-  function snapshot() { return JSON.stringify({ layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer }); }
+  function snapshot() { return JSON.stringify({ layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer, levels: doc.levels, level: doc.level }); }
 
   function commit() {
     history = history.slice(0, histIdx + 1);
@@ -270,7 +317,8 @@
 
   function applySnapshot(str) {
     var d = JSON.parse(str);
-    doc = { layers: d.layers, objects: d.objects, nextId: d.nextId, activeLayer: d.activeLayer };
+    doc = { layers: d.layers, objects: d.objects, nextId: d.nextId, activeLayer: d.activeLayer, levels: d.levels || [{ id: 'p1', name: 'Planta baja' }], level: d.level || 'p1' };
+    if (levelIndex(doc.level) < 0) doc.level = doc.levels[0].id;
     var ids = idMap();
     selection = new Set(Array.from(selection).filter(function (id) { return ids[id]; }));
     draft = null;
@@ -284,12 +332,25 @@
 
   function autosave() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(function () {
-      try { localStorage.setItem(STORE_DOC, snapshot()); } catch (e) { /* sin almacenamiento */ }
-    }, 350);
+    saveTimer = setTimeout(saveNow, 350);
+  }
+  /** Guarda el proyecto actual en este navegador. */
+  function saveNow() {
+    clearTimeout(saveTimer); saveTimer = 0;
+    if (!curId) return;
+    try {
+      localStorage.setItem(STORE_PROJECT + curId, snapshot());
+      var e = projectById(curId);
+      if (e) { e.updated = Date.now(); e.thumb = thumbOf(doc); saveIndex(); }
+    } catch (err) { toast('No hay espacio para guardar en este navegador. Descarga el plano con Guardar.'); }
   }
   function savePrefs() {
-    try { localStorage.setItem(STORE_PREFS, JSON.stringify({ units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc, precision: precision, s3: s3 })); } catch (e) { /* nada */ }
+    try {
+      localStorage.setItem(STORE_PREFS, JSON.stringify({
+        units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc,
+        precision: precision, s3: s3, cur: curId, pro: pro, areas: showAreas, furn: { kind: furnKind, align: furnAlign }
+      }));
+    } catch (e) { /* nada */ }
   }
   function loadPrefs() {
     try {
@@ -304,9 +365,17 @@
         if ([0, 15, 30, 45, 90].indexOf(p.polar) >= 0) polarInc = p.polar;
         if (p.precision && [1, 2, 4, 8, 16].indexOf(p.precision.ft) >= 0 && [0, 1, 2, 3].indexOf(p.precision.m) >= 0) precision = p.precision;
         var q = p.s3;
+        if (q && typeof q.roof === 'boolean') q.roof = q.roof ? 'flat' : 'none';     // versión anterior
         if (q && isNum(q.wallH) && q.wallH >= 1.5 && q.wallH <= 8 && isNum(q.hour) && q.hour >= 6 && q.hour <= 18 &&
             WALL_OPTS.some(function (o) { return o[0] === q.wallColor; }) && FLOOR_OPTS.some(function (o) { return o[0] === q.floor; }) &&
-            typeof q.shadows === 'boolean' && typeof q.roof === 'boolean' && (q.doors === 0 || q.doors === 90) && [0, 1.2192, 0.3].indexOf(q.cut) >= 0) s3 = q;
+            typeof q.shadows === 'boolean' && ROOF_OPTS.some(function (o) { return o[0] === q.roof; }) && (q.doors === 0 || q.doors === 90) && [0, 1.2192, 0.3].indexOf(q.cut) >= 0) {
+          if (!(q.level === 'all' || (isNum(q.level) && q.level >= 0 && q.level < MAX_LEVELS))) q.level = 'all';
+          s3 = q;
+        }
+        if (typeof p.cur === 'string') curId = p.cur;
+        if (p.pro === true) pro = true;
+        if (typeof p.areas === 'boolean') showAreas = p.areas;
+        if (p.furn && F.get(p.furn.kind)) { furnKind = p.furn.kind; if (typeof p.furn.align === 'boolean') furnAlign = p.furn.align; }
         return true;
       }
     } catch (e) { /* nada */ }
@@ -351,12 +420,14 @@
     doc.objects.forEach(function (o) {
       if ((o.type === 'door' || o.type === 'window') && isVisible(o)) (byWall[o.wall] = byWall[o.wall] || []).push(o);
     });
+    if (!clean) drawBelow(map);
     doc.layers.forEach(function (l) {
       if (!l.visible) return;
       doc.objects.forEach(function (o) {
-        if (o.layer === l.id) drawObject(o, map, byWall, null);
+        if (o.layer === l.id && onLevel(o)) drawObject(o, map, byWall, null);
       });
     });
+    drawRoomLabels(clean);
 
     if (!clean) {
       selection.forEach(function (id) {
@@ -429,8 +500,156 @@
       case 'wall': drawWall(o, byWall[o.id] || [], sel, col); break;
       case 'door': case 'window': drawOpening(o, map, col, sel); break;
       case 'dim': drawDim(o, col, sel); break;
+      case 'furn': drawFurn(o, col, sel ? 2.6 : 1.4, true); break;
+      case 'room':
+        var rp = w2s(o.p);
+        ctx.beginPath(); ctx.arc(rp[0], rp[1], sel ? 7 : 3, 0, Math.PI * 2);
+        if (sel) ctx.stroke(); else ctx.fill();
+        break;
       default: break;
     }
+  }
+
+  /* ---------- muebles ---------- */
+  /** Símbolo en planta. Se dibuja en coordenadas locales del mueble: x ancho, y fondo (arriba = pared de atrás). */
+  function drawFurn(o, col, lw, label, ghost) {
+    var sc = view.scale, c = w2s(o.p), hw = o.w / 2, hd = o.d / 2;
+    if (Math.max(o.w, o.d) * sc < 3) return;
+    ctx.save();
+    ctx.translate(c[0], c[1]);
+    ctx.rotate(-(o.ang || 0) * Math.PI / 180);
+    ctx.scale(sc, -sc);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = lw / sc; ctx.setLineDash([]);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    function box(x, y, w, d) { ctx.beginPath(); ctx.rect(x - w / 2, y - d / 2, w, d); ctx.stroke(); }
+    function ell(x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.001, rx), Math.max(0.001, ry), 0, 0, Math.PI * 2); ctx.stroke(); }
+    function ln(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+    if (ghost) { ctx.globalAlpha = 0.18; ctx.beginPath(); ctx.rect(-hw, -hd, o.w, o.d); ctx.fill(); ctx.globalAlpha = 1; }
+    box(0, 0, o.w, o.d);
+    var k = o.kind, thin = 0.7;
+    ctx.lineWidth = lw * thin / sc;
+    switch (k) {
+      case 'cama-queen': case 'cama-king': case 'cama-sencilla':
+        if (k === 'cama-sencilla') box(0, hd - 0.3, o.w - 0.2, 0.4);
+        else { box(-o.w / 4, hd - 0.3, o.w / 2 - 0.1, 0.4); box(o.w / 4, hd - 0.3, o.w / 2 - 0.1, 0.4); }
+        ln(-hw, hd - 0.75, hw, hd - 0.75); break;
+      case 'closet': ln(-hw, -hd, hw, hd); ln(-hw, hd, hw, -hd); break;
+      case 'comoda': ln(0, -hd, 0, hd); box(0, 0, o.w - 0.1, o.d - 0.1); break;
+      case 'sofa': case 'sofa2': case 'sillon':
+        ln(-hw, hd - 0.2, hw, hd - 0.2); ln(-hw + 0.2, -hd, -hw + 0.2, hd - 0.2); ln(hw - 0.2, -hd, hw - 0.2, hd - 0.2); break;
+      case 'mesa-centro': case 'mesa-comedor': box(0, 0, o.w - 0.12, o.d - 0.12); break;
+      case 'mesa-trabajo': box(0, 0, o.w - 0.1, o.d - 0.1); break;
+      case 'escritorio': ln(hw - 0.45, -hd, hw - 0.45, hd); break;
+      case 'silla': ln(-hw, hd - 0.06, hw, hd - 0.06); break;
+      case 'tv': ln(-o.w * 0.36, 0.04, o.w * 0.36, 0.04); break;
+      case 'nevera': ln(-hw, -hd + 0.14, hw, -hd + 0.14); break;
+      case 'estufa': [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (q) { ell(q[0] * o.w * 0.22, q[1] * o.d * 0.2, 0.09, 0.09); }); break;
+      case 'fregadero': box(0, -0.02, o.w * 0.62, o.d * 0.58); ell(0, hd - 0.07, 0.025, 0.025); break;
+      case 'gabinete': box(0, 0, o.w - 0.12, o.d - 0.12); break;
+      case 'lavadora': ell(0, 0, Math.min(hw, hd) * 0.64, Math.min(hw, hd) * 0.64); break;
+      case 'inodoro': box(0, hd - 0.1, o.w * 0.95, 0.2); ell(0, -0.06, o.w * 0.45, o.d * 0.3); break;
+      case 'lavamanos': ell(0, 0, o.w * 0.38, o.d * 0.32); break;
+      case 'ducha': ln(-hw, -hd, hw, hd); ell(0, 0, 0.05, 0.05); break;
+      case 'banera': box(0, 0, o.w - 0.16, o.d - 0.16); ell(-hw + 0.22, 0, 0.04, 0.04); break;
+      case 'carro': box(0, -o.d * 0.04, o.w - 0.3, o.d * 0.44); ln(-hw + 0.05, o.d * 0.28, hw - 0.05, o.d * 0.28);
+        [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (q) { box(q[0] * (hw + 0.0), q[1] * o.d * 0.31, 0.2, 0.62); }); break;
+      case 'estante': box(0, 0, o.w - 0.1, o.d - 0.1); break;
+      case 'escalera': {
+        var n = Math.max(3, Math.round(o.d / 0.28));
+        for (var i = 1; i < n; i++) ln(-hw, -hd + i * o.d / n, hw, -hd + i * o.d / n);
+        ctx.lineWidth = lw / sc;
+        ln(0, -hd + 0.18, 0, hd - 0.22); ln(0, hd - 0.22, -0.12, hd - 0.46); ln(0, hd - 0.22, 0.12, hd - 0.46);
+        break;
+      }
+      default: break;
+    }
+    ctx.restore();
+    if (label) {
+      var item = F.get(o.kind), text = o.kind === 'escalera' ? 'Sube' : (item ? item.name : '');
+      var ar = (o.ang || 0) * Math.PI / 180, ca = Math.abs(Math.cos(ar)), sa = Math.abs(Math.sin(ar));
+      var bw = (o.w * ca + o.d * sa) * sc, bh = (o.w * sa + o.d * ca) * sc;
+      if (text && bh >= 16) {
+        ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        if (ctx.measureText(text).width <= bw - 8) {
+          ctx.lineWidth = 3; ctx.strokeStyle = colors.canvas; ctx.fillStyle = colors.muted;
+          ctx.strokeText(text, c[0], c[1]); ctx.fillText(text, c[0], c[1]);
+        }
+      }
+    }
+  }
+
+  /** Lo que hay en el piso de abajo se ve tenue como referencia; los huecos de escalera se marcan. */
+  function drawBelow(map) {
+    var idx = levelIndex(doc.level);
+    if (idx < 1) return;
+    var below = doc.levels[idx - 1].id;
+    ctx.save();
+    ctx.globalAlpha = 0.22; ctx.fillStyle = colors.muted; ctx.strokeStyle = colors.muted;
+    doc.objects.forEach(function (o) {
+      if (o.lv !== below || o.type !== 'wall' || !layerShown(o)) return;
+      var info = G.wallInfo(o);
+      if (info.L < 1e-9) return;
+      pathPoly(quad(o.a, o.b, o.t, true, true), true); ctx.fill();
+    });
+    ctx.restore();
+    doc.objects.forEach(function (o) {
+      if (o.lv !== below || o.type !== 'furn' || o.kind !== 'escalera' || !layerShown(o)) return;
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      drawFurn(o, colors.muted, 1.2, false);
+      var c = w2s(o.p);
+      ctx.setLineDash([]); ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = colors.muted; ctx.fillText('Baja', c[0], c[1]);
+      ctx.restore();
+    });
+  }
+
+  /* ---------- cuartos ---------- */
+  /** Cuartos cerrados del piso que se edita. Se recalcula solo cuando cambian las paredes. */
+  function levelRooms() {
+    var walls = doc.objects.filter(function (o) { return o.type === 'wall' && isVisible(o); });
+    if (!walls.length) { roomCache = { key: '', mask: null }; return null; }
+    var key = doc.level + '|' + walls.map(function (w) { return w.a[0].toFixed(4) + ',' + w.a[1].toFixed(4) + ',' + w.b[0].toFixed(4) + ',' + w.b[1].toFixed(4) + ',' + w.t.toFixed(4); }).join(';');
+    if (key !== roomCache.key && !(ptr && ptr.mode === 'move' && roomCache.mask)) {
+      roomCache = { key: key, mask: M3.floorMask(walls, {}) };
+    }
+    return roomCache.mask && roomCache.mask.ok ? roomCache.mask : null;
+  }
+
+  function drawLabel(lines, sx, sy) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    var lh = 15, y0 = sy - (lines.length - 1) * lh / 2;
+    lines.forEach(function (ln, i) {
+      ctx.font = ln.bold ? '600 12.5px system-ui, sans-serif' : '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      ctx.lineWidth = 4; ctx.strokeStyle = colors.canvas;
+      ctx.strokeText(ln.text, sx, y0 + i * lh);
+      ctx.fillStyle = ln.bold ? colors.text : colors.muted;
+      ctx.fillText(ln.text, sx, y0 + i * lh);
+    });
+  }
+
+  function drawRoomLabels() {
+    if (!showAreas && !doc.objects.some(function (o) { return o.type === 'room' && isVisible(o); })) return;
+    var mk = levelRooms();
+    var named = doc.objects.filter(function (o) { return o.type === 'room' && isVisible(o); });
+    var taken = {};
+    named.forEach(function (o) {
+      var r = mk ? M3.roomAt(mk, o.p[0], o.p[1]) : null;
+      if (r) taken[r.id] = true;
+      var s = w2s(o.p);
+      if (s[0] < -80 || s[0] > W + 80 || s[1] < -40 || s[1] > H + 40) return;
+      var lines = [{ text: o.name, bold: true }];
+      if (r && showAreas) lines.push({ text: U.formatArea(r.area, units) });
+      drawLabel(lines, s[0], s[1] + 12);
+    });
+    if (!showAreas || !mk) return;
+    mk.rooms.forEach(function (r) {
+      if (taken[r.id] || Math.sqrt(r.area) * view.scale < 46) return;
+      var pt = M3.roomAt(mk, r.cx, r.cy) === r ? [r.cx, r.cy] : [r.x, r.y];
+      var s = w2s(pt);
+      if (s[0] < -80 || s[0] > W + 80 || s[1] < -40 || s[1] > H + 40) return;
+      drawLabel([{ text: U.formatArea(r.area, units) }], s[0], s[1]);
+    });
   }
 
   function drawWall(w, openings, sel, col) {
@@ -459,6 +678,12 @@
         ctx.lineWidth = i === 1 ? (sel ? 1.6 : 1) : (sel ? 2.4 : 1.5);
         pathPoly([G.add(g.p0, G.mul(n, k)), G.add(g.p1, G.mul(n, k))], false); ctx.stroke();
       });
+      return;
+    }
+    if (o.roll) {                       // portón enrollable: línea punteada, sin arco de giro
+      ctx.save(); ctx.setLineDash([9, 5]); ctx.lineWidth = sel ? 2.4 : 1.6;
+      pathPoly([g.p0, g.p1], false); ctx.stroke();
+      ctx.restore();
       return;
     }
     // puerta: hoja abierta 90° y arco de giro
@@ -528,6 +753,15 @@
   function drawDraft(map) {
     var p = mouse.p;
     ctx.setLineDash([]);
+    if (tool === 'furn') {
+      if (!mouse.over && !ptr) return;
+      var fp = furnPreview();
+      if (fp) {
+        drawFurn(fp, colors.accent, 1.8, true, true);
+        if (fp.aligned) { var fs = w2s(fp.p); drawTag('Pegado a la pared', fs[0], fs[1], true); }
+      }
+      return;
+    }
     if (tool === 'door' || tool === 'window') {
       if (!mouse.over && !ptr) return;
       var pl = openingPlacement();
@@ -610,7 +844,7 @@
 
   function drawSnapMarker() {
     if (!(mouse.over || ptr) || ptr && (ptr.mode === 'pan' || ptr.mode === 'box')) return;
-    if (tool === 'select' || tool === 'pan' || tool === 'door' || tool === 'window') return;
+    if (tool === 'select' || tool === 'pan' || tool === 'door' || tool === 'window' || tool === 'furn' || tool === 'room') return;
     if (!snapOn && !draft) return;
     var s = w2s(mouse.p), k = mouse.snap.kind;
     ctx.strokeStyle = colors.accent; ctx.fillStyle = colors.accent; ctx.lineWidth = 1.8; ctx.setLineDash([]);
@@ -685,6 +919,8 @@
       case 'wall': return 'paredes';
       case 'door': case 'window': return 'aberturas';
       case 'dim': return 'cotas';
+      case 'furn': return 'muebles';
+      case 'room': return 'cuartos';
       default: return doc.activeLayer;
     }
   }
@@ -697,7 +933,7 @@
   }
 
   function createObj(type, props) {
-    var o = { id: doc.nextId++, type: type, layer: layerFor(type) };
+    var o = { id: doc.nextId++, type: type, layer: layerFor(type), lv: doc.level };
     Object.keys(props).forEach(function (k) { o[k] = props[k]; });
     doc.objects.push(o);
     commit();
@@ -785,8 +1021,48 @@
     createObj(tool, { wall: pl.wall.id, pos: pl.pos, w: tool === 'door' ? settings.doorW : settings.winW, flip: pl.flip });
   }
 
+  function furnPreview() {
+    var item = F.get(furnKind);
+    if (!item) return null;
+    var o = { type: 'furn', kind: furnKind, p: mouse.p.slice(), w: item.w, d: item.d, ang: furnRot, aligned: false };
+    if (furnAlign && item.wall && furnRot === 0 && snapOn) {
+      var walls = doc.objects.filter(function (q) { return q.type === 'wall' && isVisible(q); });
+      var a = F.alignToWall(mouse.raw, item.w, item.d, walls, 0.45);
+      if (a) { o.p = a.p; o.ang = a.ang; o.aligned = true; }
+    }
+    return o;
+  }
+
+  function placeFurn() {
+    ensureLayer('muebles');
+    if (!layerOk('muebles')) return;
+    var f = furnPreview();
+    if (!f) return;
+    var o = createObj('furn', { kind: f.kind, p: f.p, w: f.w, d: f.d, ang: f.ang });
+    if (f.kind === 'escalera' && levelIndex(doc.level) >= doc.levels.length - 1) toast('La escalera sube al piso de arriba. Añade un piso con + Piso.');
+    return o;
+  }
+
+  function placeRoom() {
+    ensureLayer('cuartos');
+    if (!layerOk('cuartos')) return;
+    var mk = levelRooms();
+    var r = mk ? M3.roomAt(mk, mouse.raw[0], mouse.raw[1]) : null;
+    if (!r) { toast('Toca dentro de un cuarto cerrado por paredes.'); return; }
+    var here = doc.objects.filter(function (o) { return o.type === 'room' && isVisible(o); });
+    var existing = here.filter(function (o) { return M3.roomAt(mk, o.p[0], o.p[1]) === r; })[0];
+    if (existing) { setTool('select'); selection.add(existing.id); uiSync(); requestRender(); toast('Ese cuarto ya tiene nombre. Cámbialo en Propiedades.'); return; }
+    var at = mouse.raw.slice(), def = 'Cuarto ' + (here.length + 1);
+    ask('Nombre del cuarto', U.formatArea(r.area, units), { input: true, value: def, ok: 'Poner nombre' }).then(function (name) {
+      if (name === null) return;
+      createObj('room', { p: at, name: name || def });
+    });
+  }
+
   function placeAt() {
-    if (tool === 'door' || tool === 'window') placeOpening();
+    if (tool === 'furn') placeFurn();
+    else if (tool === 'room') placeRoom();
+    else if (tool === 'door' || tool === 'window') placeOpening();
     else if (DRAW_TOOLS.indexOf(tool) >= 0) addPoint(mouse.p.slice());
   }
 
@@ -1028,7 +1304,7 @@
   /* ------------------------------------------------------------------ */
   /* Teclado y entrada de medidas                                        */
   /* ------------------------------------------------------------------ */
-  function needsInput() { return tool !== 'select' && tool !== 'pan' && tool !== 'dim'; }
+  function needsInput() { return tool !== 'select' && tool !== 'pan' && tool !== 'dim' && tool !== 'furn' && tool !== 'room'; }
 
   window.addEventListener('keydown', function (e) {
     var tag = (e.target && e.target.tagName || '').toLowerCase();
@@ -1070,6 +1346,7 @@
     if (e.key === 'F7') { e.preventDefault(); toggleGrid(); return; }
     if (e.key === 'F8') { e.preventDefault(); toggleOrtho(); return; }
 
+    if (tool === 'furn' && k === 'r') { e.preventDefault(); rotateFurnTool(); return; }
     if (needsInput() && /^[0-9.'"<,\-]$/.test(e.key)) { cmdInput.focus(); return; }   // el carácter cae en la casilla
     var t = TOOLS.filter(function (x) { return x !== 'sep' && x.key === k; })[0];
     if (t) { e.preventDefault(); setTool(t.id); }
@@ -1100,7 +1377,7 @@
       savePrefs(); uiSync(); toast('Ancho: ' + fmt(wv)); requestRender();
       return;
     }
-    if (tool === 'select' || tool === 'pan' || tool === 'dim') { toast('Elige una herramienta de dibujo para escribir medidas.'); return; }
+    if (tool === 'select' || tool === 'pan' || tool === 'dim' || tool === 'furn' || tool === 'room') { toast('Elige una herramienta de dibujo para escribir medidas.'); return; }
 
     var last = lastDraftPoint();
     if (!draft) {
@@ -1173,6 +1450,7 @@
     $('btn-undo').appendChild(svgIcon('undo', 20));
     $('btn-redo').appendChild(svgIcon('redo', 20));
     $('btn-panel').appendChild(svgIcon('panel', 20));
+    document.querySelector('.proj-ico').appendChild(svgIcon('folder', 20));
   }
 
   function hintText() {
@@ -1187,6 +1465,8 @@
       case 'wall': return s ? 'Pared · siguiente punto o escribe el largo' : 'Pared · toca el punto inicial';
       case 'door': return 'Puerta · toca una pared · escribe el ancho';
       case 'window': return 'Ventana · toca una pared · escribe el ancho';
+      case 'furn': return 'Mueble · toca para ponerlo · R lo gira';
+      case 'room': return 'Cuarto · toca dentro de un cuarto cerrado para ponerle nombre';
       case 'dim': return s === 0 ? 'Cota · toca el primer punto' : s === 1 ? 'Cota · toca el segundo punto' : 'Cota · toca para ubicar la línea';
       default: return '';
     }
@@ -1228,6 +1508,29 @@
       DOOR_PRESETS[units].map(function (m) { return [fmt(m), m]; }));
     if (tool === 'window') field('Ancho de ventana', fmt(settings.winW), function (m) { settings.winW = m; },
       WINDOW_PRESETS[units].map(function (m) { return [fmt(m), m]; }));
+    if (tool === 'furn') {
+      var fsel = el('select', { 'aria-label': 'Mueble' });
+      F.cats().forEach(function (cat) {
+        var g = el('optgroup', { label: cat });
+        F.CATALOG.filter(function (c) { return c.cat === cat; }).forEach(function (c) {
+          var op = el('option', { value: c.id, text: c.name }); if (c.id === furnKind) op.selected = true; g.appendChild(op);
+        });
+        fsel.appendChild(g);
+      });
+      fsel.addEventListener('change', function () { furnKind = fsel.value; savePrefs(); refreshOptions(); requestRender(); });
+      var it = F.get(furnKind);
+      var rot = el('button', { class: 'chip-btn', type: 'button', text: furnRot ? 'Girado ' + furnRot + '°' : 'Girar 90°', title: 'Girar (R)' });
+      rot.addEventListener('click', rotateFurnTool);
+      var al = el('input', { type: 'checkbox', 'aria-label': 'Pegar a la pared' }); al.checked = furnAlign;
+      al.addEventListener('change', function () { furnAlign = al.checked; savePrefs(); requestRender(); });
+      box.appendChild(el('div', { class: 'opt' }, [
+        el('span', { class: 'opt-name', text: 'Mueble' }), fsel,
+        el('span', { class: 'opt-dim', text: it ? fmt(it.w) + ' × ' + fmt(it.d) : '' }),
+        rot,
+        el('label', { class: 'opt-check' }, [al, document.createTextNode(' Pegar a pared')])
+      ]));
+      showed = true;
+    }
     if (tool === 'line' || tool === 'polyline' || tool === 'rect' || tool === 'circle') {
       var sel = el('select', { 'aria-label': 'Capa activa' });
       doc.layers.forEach(function (l) { var o = el('option', { value: l.id, text: l.name }); if (l.id === doc.activeLayer) o.selected = true; sel.appendChild(o); });
@@ -1332,6 +1635,7 @@
     box.appendChild(propRow('Líneas gruesas', selectEl([['Cada 2', 2], ['Cada 4', 4], ['Cada 5', 5], ['Cada 8', 8], ['Cada 10', 10]], gridCfg.major, function (v) { gridCfg.major = v; cfgChanged(); }, 'Líneas gruesas')));
     box.appendChild(propRow('Paso del snap', stepSelect(gridCfg.snapStep, 'Igual a la cuadrícula', 'Paso del snap', function (v) { gridCfg.snapStep = v; cfgChanged(); })));
     box.appendChild(propRow('Ángulo polar', selectEl([['Apagado', 0], ['15°', 15], ['30°', 30], ['45°', 45], ['90°', 90]], polarInc, function (v) { polarInc = v; cfgChanged(); }, 'Ángulo polar')));
+    box.appendChild(propRow('Áreas', checkRow(showAreas, function (v) { showAreas = v; savePrefs(); requestRender(); renderProps(); }, 'Mostrar el área de cada cuarto')));
     var precOpts = units === 'ft'
       ? [['1"', 1], ['1/2"', 2], ['1/4"', 4], ['1/8"', 8], ['1/16"', 16]]
       : [['Automática', 0], ['0.1 m', 1], ['0.01 m (cm)', 2], ['0.001 m (mm)', 3]];
@@ -1394,9 +1698,44 @@
         var flip = el('button', { class: 'chip-btn', type: 'button', text: 'Invertir lado' });
         flip.addEventListener('click', function () { o.flip = !o.flip; commit(); });
         box.appendChild(propRow('Apertura', flip));
+        if (o.type === 'door') box.appendChild(propRow('Portón', el('label', { class: 'opt-check' }, [
+          (function () { var cb = el('input', { type: 'checkbox', 'aria-label': 'Portón enrollable' }); cb.checked = !!o.roll; cb.addEventListener('change', function () { if (cb.checked) o.roll = true; else delete o.roll; commit(); }); return cb; })(),
+          document.createTextNode(' Enrollable (garaje)')
+        ])));
         break;
       case 'dim':
         box.appendChild(propRow('Medida', valSpan(fmt(G.dist(o.a, o.b)))));
+        break;
+      case 'furn':
+        var item = F.get(o.kind);
+        if (item) {
+          var ksel = el('select', { 'aria-label': 'Tipo de mueble' });
+          F.CATALOG.forEach(function (c) { var op = el('option', { value: c.id, text: c.name }); if (c.id === o.kind) op.selected = true; ksel.appendChild(op); });
+          ksel.addEventListener('change', function () { var c = F.get(ksel.value); if (!c) return; o.kind = c.id; o.w = c.w; o.d = c.d; commit(); });
+          box.appendChild(propRow('Mueble', ksel));
+        }
+        box.appendChild(propRow('Ancho', editField(fmt(o.w), function (m) { o.w = m; })));
+        box.appendChild(propRow(o.kind === 'escalera' ? 'Largo' : 'Fondo', editField(fmt(o.d), function (m) { o.d = m; })));
+        var ai = el('input', { type: 'text', value: String(Math.round((o.ang || 0) * 10) / 10) + '°', 'aria-label': 'Ángulo' });
+        ai.addEventListener('change', function () {
+          var v = parseFloat(ai.value);
+          if (isNaN(v)) { toast('Escribe el ángulo en grados.'); ai.value = (o.ang || 0) + '°'; return; }
+          o.ang = ((v % 360) + 360) % 360; commit();
+        });
+        ai.addEventListener('keydown', function (e) { if (e.key === 'Enter') ai.blur(); });
+        box.appendChild(propRow('Ángulo', ai));
+        if (o.kind === 'escalera') {
+          var li = levelIndex(o.lv), up = doc.levels[li + 1];
+          box.appendChild(propRow('Sube a', valSpan(up ? up.name : 'No hay piso arriba')));
+        }
+        break;
+      case 'room':
+        var ni = el('input', { type: 'text', value: o.name, maxlength: '60', 'aria-label': 'Nombre del cuarto' });
+        ni.addEventListener('change', function () { o.name = ni.value.trim() || o.name; commit(); });
+        ni.addEventListener('keydown', function (e) { if (e.key === 'Enter') ni.blur(); });
+        box.appendChild(propRow('Nombre', ni));
+        var mk = levelRooms(), rr = mk ? M3.roomAt(mk, o.p[0], o.p[1]) : null;
+        box.appendChild(propRow('Área', valSpan(rr ? U.formatArea(rr.area, units) : 'Fuera de un cuarto cerrado')));
         break;
       default: break;
     }
@@ -1423,6 +1762,7 @@
     refreshOptions();
     renderLayers();
     renderGridCfg();
+    renderLevels();
     renderProps();
     syncModeUI();
     renderCfg3();
@@ -1457,24 +1797,229 @@
 
   function loadDoc(clean, opts) {
     doc = clean;
-    selection.clear(); draft = null;
+    selection.clear(); draft = null; roomCache = { key: '', mask: null };
     history = [snapshot()]; histIdx = 0;
-    autosave();
+    if (mode === '3d') { setMode('2d'); }
     uiSync();
     fitView();
+    saveNow();
     if (opts && opts.message) toast(opts.message);
   }
 
-  $('btn-new').addEventListener('click', function () { $('dlg-new').showModal(); });
-  $('dlg-new').addEventListener('close', function () {
-    if ($('dlg-new').returnValue === 'ok') {
-      loadDoc({ layers: defaultLayers(), objects: [], nextId: 1, activeLayer: 'dibujo' }, { message: 'Dibujo nuevo. Empieza con Pared o Línea.' });
-    }
-  });
+  /* ---------- preguntas y avisos ---------- */
+  /** Pregunta con aceptar/cancelar; con opts.input pide un texto. Devuelve una promesa: null si cancelan. */
+  function ask(title, text, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var dlg = $('dlg-ask'), inp = $('ask-input');
+      $('ask-title').textContent = title;
+      $('ask-text').textContent = text || '';
+      $('ask-text').hidden = !text;
+      inp.hidden = !opts.input; inp.value = opts.value || '';
+      $('ask-ok').textContent = opts.ok || 'Aceptar';
+      dlg.returnValue = 'cancel';
+      function done() {
+        dlg.removeEventListener('close', done);
+        inp.removeEventListener('keydown', onKey);
+        resolve(dlg.returnValue === 'ok' ? (opts.input ? inp.value.trim() : true) : null);
+      }
+      function onKey(e) { if (e.key === 'Enter') { e.preventDefault(); dlg.close('ok'); } }
+      dlg.addEventListener('close', done);
+      inp.addEventListener('keydown', onKey);
+      dlg.showModal();
+      if (opts.input) { inp.focus(); inp.select(); }
+    });
+  }
+
+  /** Límite del plan gratis: explica y, si aceptan el modo de pruebas, sigue con la acción. */
+  function needPro(text, fn) {
+    var d = $('dlg-pro');
+    $('pro-text').textContent = text;
+    d.returnValue = 'cancel';
+    d.addEventListener('close', function once() {
+      d.removeEventListener('close', once);
+      if (d.returnValue === 'ok') { pro = true; savePrefs(); uiSync(); toast('Modo de pruebas activado: sin límites.'); fn(); }
+    });
+    d.showModal();
+  }
+
+  /* ---------- miniaturas ---------- */
+  function drawMini(c2, d, bg) {
+    var g = c2.getContext('2d'), w = c2.width, h = c2.height;
+    var lv0 = (d.levels && d.levels[0] && d.levels[0].id) || 'p1';
+    var objs = d.objects.filter(function (o) { return !o.lv || o.lv === lv0; });
+    g.fillStyle = bg || colors.canvas; g.fillRect(0, 0, w, h);
+    var walls = objs.filter(function (o) { return o.type === 'wall'; });
+    var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    (walls.length ? walls : objs).forEach(function (o) {
+      var b = G.bboxOf(o, null); if (!b) return;
+      minx = Math.min(minx, b.minx); miny = Math.min(miny, b.miny); maxx = Math.max(maxx, b.maxx); maxy = Math.max(maxy, b.maxy);
+    });
+    if (!isFinite(minx)) return;
+    var pad = Math.min(w, h) * 0.1, k = Math.min((w - 2 * pad) / Math.max(0.5, maxx - minx), (h - 2 * pad) / Math.max(0.5, maxy - miny));
+    var ox = (w - (maxx - minx) * k) / 2, oy = (h - (maxy - miny) * k) / 2;
+    function P(p) { return [ox + (p[0] - minx) * k, h - (oy + (p[1] - miny) * k)]; }
+    function poly(pts) { g.beginPath(); pts.forEach(function (p, i) { var q = P(p); if (i) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }); g.closePath(); }
+    g.fillStyle = colors.muted; g.globalAlpha = 0.4;
+    objs.forEach(function (o) { if (o.type === 'furn') { poly(F.corners(o)); g.fill(); } });
+    g.globalAlpha = 1; g.fillStyle = colors.ink;
+    walls.forEach(function (o) { if (G.dist(o.a, o.b) > 1e-6) { poly(quad(o.a, o.b, o.t, true, true)); g.fill(); } });
+  }
+  function thumbOf(d) {
+    try {
+      var c2 = document.createElement('canvas'); c2.width = 192; c2.height = 132;
+      drawMini(c2, d);
+      return c2.toDataURL('image/png');
+    } catch (e) { return ''; }
+  }
+
+  /* ---------- proyectos (se guardan en este navegador) ---------- */
+  function loadIndex() {
+    projects = [];
+    try {
+      var a = JSON.parse(localStorage.getItem(STORE_INDEX) || '[]');
+      if (Array.isArray(a)) projects = a.filter(function (e) { return e && typeof e.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(e.id); })
+        .map(function (e) { return { id: e.id, name: String(e.name || 'Proyecto').slice(0, 60), updated: isNum(e.updated) ? e.updated : Date.now(), thumb: typeof e.thumb === 'string' && e.thumb.indexOf('data:image/png') === 0 ? e.thumb : '' }; });
+    } catch (e) { projects = []; }
+  }
+  function saveIndex() { try { localStorage.setItem(STORE_INDEX, JSON.stringify(projects)); } catch (e) { /* nada */ } }
+  function projectById(id) { for (var i = 0; i < projects.length; i++) if (projects[i].id === id) return projects[i]; return null; }
+  function newProjectId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function uniqueName(base) {
+    var name = base, n = 2;
+    while (projects.some(function (p) { return p.name === name; })) name = base + ' ' + (n++);
+    return name;
+  }
+  function registerProject(name, clean) {
+    var id = newProjectId();
+    projects.unshift({ id: id, name: name, updated: Date.now(), thumb: thumbOf(clean) });
+    saveIndex();
+    try { localStorage.setItem(STORE_PROJECT + id, JSON.stringify(clean)); } catch (e) { toast('No hay espacio en este navegador para otro proyecto.'); }
+    return id;
+  }
+  function planText() {
+    return pro ? 'Modo de pruebas · sin límites' : 'Plan gratis · ' + projects.length + ' de ' + LIMITS.projects + ' proyectos · hasta ' + LIMITS.levels + ' pisos';
+  }
+  function canAddProject(then) {
+    if (pro || projects.length < LIMITS.projects) return true;
+    needPro('El plan gratis guarda hasta ' + LIMITS.projects + ' proyectos. Con Cota Pro no hay límite.', then);
+    return false;
+  }
+  function openProject(id) {
+    var e = projectById(id);
+    if (!e) return;
+    saveNow();
+    var clean = null;
+    try { clean = cleanDoc(JSON.parse(localStorage.getItem(STORE_PROJECT + id) || 'null')); } catch (err) { clean = null; }
+    if (!clean) { toast('No se pudo abrir "' + e.name + '".'); return; }
+    curId = id; savePrefs();
+    loadDoc(clean, { message: 'Abriste "' + e.name + '".' });
+    document.title = e.name + ' · Cota';
+  }
+  function startFromTemplate(id) {
+    var t = TPL.build(id), item = TPL.LIST.filter(function (x) { return x.id === id; })[0];
+    if (!t || !item) return;
+    if (!canAddProject(function () { startFromTemplate(id); })) return;
+    var clean = cleanDoc({ layers: defaultLayers(), objects: t.objects, nextId: t.nextId, activeLayer: 'dibujo', levels: t.levels, level: t.level });
+    saveNow();
+    var name = uniqueName(item.name);
+    curId = registerProject(name, clean);
+    savePrefs();
+    loadDoc(clean, { message: id === 'blank' ? 'Proyecto nuevo. Empieza con Pared o Línea.' : 'Plantilla "' + item.name + '" lista. Cámbiala como quieras.' });
+    document.title = name + ' · Cota';
+  }
+  function duplicateProject(id) {
+    var e = projectById(id);
+    if (!e) return;
+    if (!canAddProject(function () { duplicateProject(id); })) return;
+    if (id === curId) saveNow();
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(STORE_PROJECT + id) || 'null'); } catch (err) { raw = null; }
+    var clean = cleanDoc(raw);
+    if (!clean) { toast('No se pudo duplicar.'); return; }
+    registerProject(uniqueName(e.name + ' (copia)'), clean);
+    renderProjects();
+  }
+  function deleteProject(id) {
+    var e = projectById(id);
+    if (!e) return;
+    ask('¿Borrar "' + e.name + '"?', 'Se borra de este navegador y no se puede deshacer. Si lo quieres conservar, usa Guardar primero.', { ok: 'Borrar' }).then(function (yes) {
+      if (!yes) return;
+      try { localStorage.removeItem(STORE_PROJECT + id); } catch (err) { /* nada */ }
+      projects = projects.filter(function (p) { return p.id !== id; });
+      saveIndex();
+      if (id === curId) {
+        if (projects.length) { curId = ''; openProject(projects[0].id); }
+        else { curId = ''; startFromTemplate('blank'); }
+      }
+      renderProjects();
+    });
+  }
+  function ago(t) {
+    var m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'hace un momento';
+    if (m < 60) return 'hace ' + m + ' min';
+    var h = Math.round(m / 60);
+    if (h < 24) return 'hace ' + h + (h === 1 ? ' hora' : ' horas');
+    var d = Math.round(h / 24);
+    return d === 1 ? 'ayer' : 'hace ' + d + ' días';
+  }
+  function renderProjects() {
+    $('proj-plan').textContent = planText();
+    var ul = $('proj-list');
+    ul.textContent = '';
+    projects.forEach(function (e) {
+      var cur = e.id === curId;
+      var li = el('li', { class: 'proj' + (cur ? ' current' : '') });
+      var thumb = e.thumb ? el('img', { src: e.thumb, alt: '' }) : el('canvas', { width: '192', height: '132' });
+      var name = el('input', { type: 'text', value: e.name, maxlength: '60', 'aria-label': 'Nombre del proyecto' });
+      name.addEventListener('change', function () {
+        e.name = name.value.trim() || e.name; name.value = e.name; saveIndex();
+        if (cur) document.title = e.name + ' · Cota';
+      });
+      name.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') name.blur(); });
+      var meta = el('div', { class: 'meta', text: (cur ? 'Abierto · ' : '') + ago(e.updated) });
+      var acts = el('div', { class: 'proj-actions' });
+      var open = el('button', { class: 'chip-btn', type: 'button', text: cur ? 'Abierto' : 'Abrir' });
+      if (cur) open.disabled = true;
+      open.addEventListener('click', function () { $('dlg-proj').close(); openProject(e.id); });
+      var dup = el('button', { class: 'chip-btn', type: 'button', text: 'Duplicar' });
+      dup.addEventListener('click', function () { duplicateProject(e.id); });
+      var del = el('button', { class: 'chip-btn danger', type: 'button', text: 'Borrar' });
+      del.addEventListener('click', function () { deleteProject(e.id); });
+      acts.appendChild(open); acts.appendChild(dup); acts.appendChild(del);
+      li.appendChild(thumb); li.appendChild(el('div', null, [name, meta])); li.appendChild(acts);
+      ul.appendChild(li);
+    });
+  }
+  function showProjects() { saveNow(); renderProjects(); $('dlg-proj').showModal(); }
+  function showTemplates() {
+    var grid = $('tpl-grid');
+    grid.textContent = '';
+    TPL.LIST.forEach(function (item) {
+      var t = TPL.build(item.id);
+      var c2 = el('canvas', { width: '320', height: '220' });
+      drawMini(c2, { objects: t.objects, levels: t.levels });
+      var b = el('button', { class: 'tpl', type: 'button' }, [c2, el('b', { text: item.name }), el('span', { text: item.desc })]);
+      b.addEventListener('click', function () { $('dlg-new').close(); startFromTemplate(item.id); });
+      grid.appendChild(b);
+    });
+    $('dlg-new').showModal();
+  }
+
+  $('btn-new').addEventListener('click', showTemplates);
+  $('btn-proj').addEventListener('click', showProjects);
+  $('tpl-cancel').addEventListener('click', function () { $('dlg-new').close(); });
+  $('proj-close').addEventListener('click', function () { $('dlg-proj').close(); });
+  $('proj-new').addEventListener('click', function () { $('dlg-proj').close(); showTemplates(); });
+  window.addEventListener('pagehide', saveNow);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') saveNow(); });
+
   $('btn-save').addEventListener('click', function () {
-    var payload = { app: 'cota', version: 1, units: units, layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer };
-    download(new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }), 'plano-cota.json');
-    toast('Guardado como plano-cota.json');
+    var payload = { app: 'cota', version: 2, units: units, layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer, levels: doc.levels, level: doc.level };
+    var e = projectById(curId), base = (e ? e.name : 'plano-cota').replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '').trim().replace(/\s+/g, '-') || 'plano-cota';
+    download(new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }), base + '.json');
+    toast('Guardado como ' + base + '.json');
   });
   $('btn-open').addEventListener('click', function () { $('file-open').click(); });
   $('file-open').addEventListener('change', function (e) {
@@ -1486,7 +2031,14 @@
       var clean = null;
       try { clean = cleanDoc(JSON.parse(String(r.result))); } catch (err) { clean = null; }
       if (!clean) { toast('Ese archivo no es un plano de Cota.'); return; }
-      loadDoc(clean, { message: 'Plano abierto: ' + f.name });
+      function go() {
+        saveNow();
+        var name = uniqueName(f.name.replace(/\.json$/i, '').slice(0, 50) || 'Plano abierto');
+        curId = registerProject(name, clean); savePrefs();
+        loadDoc(clean, { message: 'Plano abierto como proyecto nuevo: ' + name });
+        document.title = name + ' · Cota';
+      }
+      if (canAddProject(go)) go();
     };
     r.readAsText(f);
   });
@@ -1498,6 +2050,110 @@
       if (blob) { download(blob, 'plano-cota.png'); toast('Imagen guardada como plano-cota.png'); }
     }, 'image/png');
   });
+
+  /* ------------------------------------------------------------------ */
+  /* Pisos                                                               */
+  /* ------------------------------------------------------------------ */
+  function rotateFurnTool() {
+    furnRot = (furnRot + 90) % 360;
+    refreshOptions(); requestRender();
+  }
+
+  function setLevel(id) {
+    if (levelIndex(id) < 0 || id === doc.level) return;
+    doc.level = id;
+    selection.clear(); draft = null; roomCache = { key: '', mask: null };
+    autosave(); uiSync(); requestRender();
+  }
+
+  function nextLevelId() {
+    var n = 1;
+    doc.levels.forEach(function (l) { var m = /^p(\d+)$/.exec(l.id); if (m) n = Math.max(n, parseInt(m[1], 10) + 1); });
+    return 'p' + n;
+  }
+
+  /** Piso nuevo arriba de todos. Con copyWalls trae las paredes y aberturas del piso actual para calcar. */
+  function addLevel(copyWalls) {
+    if (doc.levels.length >= MAX_LEVELS) { toast('Máximo ' + MAX_LEVELS + ' pisos.'); return; }
+    if (!pro && doc.levels.length >= LIMITS.levels) {
+      needPro('El plan gratis incluye hasta ' + LIMITS.levels + ' pisos por proyecto. Con Cota Pro no hay límite.', function () { addLevel(copyWalls); });
+      return;
+    }
+    var id = nextLevelId(), src = doc.level;
+    doc.levels.push({ id: id, name: 'Piso ' + (doc.levels.length + 1) });
+    if (copyWalls) {
+      var map = {}, add = [];
+      doc.objects.forEach(function (o) {
+        if (o.lv !== src || o.type !== 'wall') return;
+        var c = clone(o); c.id = doc.nextId++; c.lv = id; map[o.id] = c.id; add.push(c);
+      });
+      doc.objects.forEach(function (o) {
+        if (o.lv !== src || (o.type !== 'door' && o.type !== 'window') || !map[o.wall]) return;
+        var c = clone(o); c.id = doc.nextId++; c.lv = id; c.wall = map[o.wall]; add.push(c);
+      });
+      doc.objects = doc.objects.concat(add);
+    }
+    doc.level = id; selection.clear(); draft = null; roomCache = { key: '', mask: null };
+    commit();
+    toast(copyWalls ? 'Piso nuevo con las paredes del de abajo.' : 'Piso nuevo vacío. El de abajo se ve tenue de guía.');
+  }
+
+  function deleteLevel() {
+    if (doc.levels.length < 2) return;
+    var id = doc.level, name = levelName(id);
+    var n = doc.objects.filter(function (o) { return o.lv === id; }).length;
+    ask('¿Borrar "' + name + '"?', n ? 'Se borran sus ' + n + ' objetos. Puedes deshacer con Ctrl+Z.' : 'Está vacío.', { ok: 'Borrar piso' }).then(function (yes) {
+      if (!yes) return;
+      var idx = levelIndex(id);
+      doc.objects = doc.objects.filter(function (o) { return o.lv !== id; });
+      doc.levels.splice(idx, 1);
+      doc.level = doc.levels[Math.max(0, idx - 1)].id;
+      if (typeof s3.level === 'number' && s3.level >= doc.levels.length) s3.level = 'all';
+      selection.clear(); roomCache = { key: '', mask: null };
+      commit();
+    });
+  }
+
+  function renderLevels() {
+    var ul = $('levels');
+    if (!ul) return;
+    ul.textContent = '';
+    doc.levels.slice().reverse().forEach(function (l) {
+      var active = l.id === doc.level;
+      var li = el('li', { class: 'layer' + (active ? ' active' : '') });
+      var n = doc.objects.filter(function (o) { return o.lv === l.id && o.type !== 'dim'; }).length;
+      var dot = el('span', { class: 'sw' }); dot.style.background = active ? 'var(--accent)' : 'var(--muted)';
+      var name = el('input', { type: 'text', value: l.name, maxlength: '30', 'aria-label': 'Nombre del piso' });
+      name.addEventListener('focus', function () { if (!active) setLevel(l.id); });
+      name.addEventListener('change', function () { l.name = name.value.trim() || l.name; commit(); });
+      name.addEventListener('keydown', function (e) { if (e.key === 'Enter') name.blur(); });
+      li.addEventListener('click', function (e) { if (e.target === li || e.target === dot) setLevel(l.id); });
+      li.appendChild(dot); li.appendChild(name); li.appendChild(el('span', { class: 'lvl-n', text: String(n) }));
+      ul.appendChild(li);
+    });
+    var tools = $('level-tools');
+    tools.textContent = '';
+    var cp = el('button', { class: 'chip-btn', type: 'button', text: 'Piso nuevo con estas paredes' });
+    cp.addEventListener('click', function () { addLevel(true); });
+    tools.appendChild(cp);
+    if (doc.levels.length > 1) {
+      var del = el('button', { class: 'chip-btn danger', type: 'button', text: 'Borrar este piso' });
+      del.addEventListener('click', deleteLevel);
+      tools.appendChild(del);
+    }
+
+    var bar = $('levelbar');
+    bar.textContent = '';
+    doc.levels.forEach(function (l) {
+      var b = el('button', { class: 'lvl-chip', type: 'button', text: l.name, 'aria-pressed': String(l.id === doc.level), title: 'Editar ' + l.name });
+      b.addEventListener('click', function () { setLevel(l.id); });
+      bar.appendChild(b);
+    });
+    var plus = el('button', { class: 'lvl-chip', type: 'button', text: '+ Piso', title: 'Añadir un piso arriba' });
+    plus.addEventListener('click', function () { addLevel(false); });
+    bar.appendChild(plus);
+  }
+  $('level-add').addEventListener('click', function () { addLevel(false); });
 
   /* ------------------------------------------------------------------ */
   /* Botones sueltos                                                     */
@@ -1521,11 +2177,17 @@
   /* ------------------------------------------------------------------ */
   /* Vista 3D                                                            */
   /* ------------------------------------------------------------------ */
-  function visibleObjects() { return doc.objects.filter(isVisible); }
+  function visibleObjects() { return doc.objects.filter(layerShown); }
+  function settings3() {
+    return Object.assign({}, s3, {
+      levels: doc.levels.map(function (l) { return l.id; }), levelNames: doc.levels.map(function (l) { return l.name; }),
+      lvActive: Math.max(0, levelIndex(doc.level))
+    });
+  }
 
   function sync3D(reset) {
     if (!view3d) return;
-    view3d.sync(visibleObjects(), s3, units, !!reset);
+    view3d.sync(visibleObjects(), settings3(), units, !!reset);
     renderCfg3();
   }
 
@@ -1551,7 +2213,7 @@
       cv.hidden = true; $('cv3').hidden = false; $('cam3').hidden = false;
       resize();
       view3d.activate();
-      view3d.sync(visibleObjects(), s3, units, false);
+      view3d.sync(visibleObjects(), settings3(), units, false);
       cam3 = 'orbit';
       view3d.setCameraMode('orbit', true);
       if (!doc.objects.some(function (o) { return o.type === 'wall'; })) toast('Dibuja paredes en 2D y aparecen aquí en 3D.');
@@ -1638,13 +2300,17 @@
     rng.addEventListener('input', function () {
       s3.hour = parseFloat(rng.value);
       lbl.textContent = fmtHour(s3.hour);
-      if (view3d) view3d.sync(visibleObjects(), s3, units, false);
+      if (view3d) view3d.sync(visibleObjects(), settings3(), units, false);
     });
     rng.addEventListener('change', savePrefs);
     box.appendChild(propRow('Hora', el('div', { class: 'dual' }, [rng, lbl])));
 
     box.appendChild(propRow('Sombras', checkRow(s3.shadows, function (v) { s3.shadows = v; cfg3Changed(); }, 'Sombras')));
-    box.appendChild(propRow('Techo', checkRow(s3.roof, function (v) { s3.roof = v; cfg3Changed(); }, 'Techo')));
+    if (doc.levels.length > 1) {
+      var lvOpts = [['all', 'Todos los pisos']].concat(doc.levels.map(function (l, i) { return [String(i), 'Hasta ' + l.name]; }));
+      box.appendChild(propRow('Ver', selectStr(lvOpts, s3.level === 'all' ? 'all' : String(s3.level), function (v) { s3.level = v === 'all' ? 'all' : parseInt(v, 10); cfg3Changed(); }, 'Pisos que se ven')));
+    }
+    box.appendChild(propRow('Techo', selectStr(ROOF_OPTS, s3.roof, function (v) { s3.roof = v; cfg3Changed(); }, 'Techo')));
 
     var info = view3d && view3d.info();
     if (info) {
@@ -1655,6 +2321,12 @@
       if (info.rooms.length) {
         line.appendChild(document.createTextNode(plural(info.rooms.length, 'cuarto cerrado', 'cuartos cerrados') + ' · '));
         line.appendChild(el('b', { text: U.formatArea(info.area, units) }));
+        if (info.levels && info.levels.length > 1) {
+          info.levels.forEach(function (lv) {
+            line.appendChild(document.createElement('br'));
+            line.appendChild(document.createTextNode(lv.name + ': ' + plural(lv.rooms, 'cuarto', 'cuartos') + ' · ' + U.formatArea(lv.area, units)));
+          });
+        }
       } else if (info.walls) {
         line.appendChild(document.createTextNode('Sin cuartos cerrados: revisa que las paredes se toquen en las esquinas.'));
       } else {
@@ -1683,9 +2355,22 @@
     readColors();
     buildTools();
 
-    var loaded = null, fromStore = false;
-    try { loaded = cleanDoc(JSON.parse(localStorage.getItem(STORE_DOC) || 'null')); fromStore = !!loaded; } catch (e) { loaded = null; }
-    doc = loaded || buildExample();
+    // proyectos: si venimos de la versión de un solo dibujo, ese dibujo pasa a ser el primer proyecto
+    loadIndex();
+    var loaded = null, fromStore = true;
+    if (!projects.length) {
+      try { loaded = cleanDoc(JSON.parse(localStorage.getItem(STORE_DOC) || 'null')); } catch (e) { loaded = null; }
+      if (!loaded) { loaded = cleanDoc(buildExample()); fromStore = false; }
+      curId = registerProject(loaded && fromStore ? 'Mi primer plano' : 'Plano de ejemplo', loaded);
+    } else {
+      if (!projectById(curId)) curId = projects[0].id;
+      try { loaded = cleanDoc(JSON.parse(localStorage.getItem(STORE_PROJECT + curId) || 'null')); } catch (e) { loaded = null; }
+      if (!loaded) { loaded = cleanDoc(buildExample()); fromStore = false; }
+    }
+    doc = loaded;
+    var cur = projectById(curId);
+    if (cur) document.title = cur.name + ' · Cota';
+    savePrefs();
     history = [snapshot()]; histIdx = 0;
 
     new ResizeObserver(resize).observe($('stage'));
@@ -1693,7 +2378,7 @@
     cv.classList.add('select');
     uiSync();
     fitView();
-    if (!fromStore) toast('Este es un plano de ejemplo. Dibuja encima o usa Nuevo para empezar de cero.');
+    if (!fromStore) toast('Este es un plano de ejemplo. Dibuja encima o usa Nuevo para empezar con una plantilla.');
     if (window.matchMedia) {
       var mq = window.matchMedia('(prefers-color-scheme: light)');
       if (mq.addEventListener) mq.addEventListener('change', function (ev) {
@@ -1705,5 +2390,9 @@
   boot();
 
   // para depurar desde la consola del navegador
-  window.Cota = { get doc() { return doc; }, get view() { return view; }, get mode() { return mode; }, get view3d() { return view3d; }, get s3() { return s3; }, setTool: setTool, fitView: fitView, setMode: setMode, setCam: setCam };
+  window.Cota = {
+    get projects() { return projects; }, get curId() { return curId; }, get pro() { return pro; },
+    setLevel: setLevel, addLevel: addLevel, startFromTemplate: startFromTemplate, openProject: openProject, saveNow: saveNow,
+    get furnKind() { return furnKind; }, set furnKind(v) { furnKind = v; }, get level() { return doc.level; },
+    get doc() { return doc; }, get view() { return view; }, get mode() { return mode; }, get view3d() { return view3d; }, get s3() { return s3; }, setTool: setTool, fitView: fitView, setMode: setMode, setCam: setCam };
 })();

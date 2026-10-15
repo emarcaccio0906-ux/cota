@@ -6,6 +6,8 @@
 
   var THREE = root.THREE;
   var M = root.CotaModel3D;
+  var F = root.CotaFurn;
+  var SLAB = 0.2;          // grosor del entrepiso entre dos plantas
 
   var WALL_COLORS = {
     blanco: 0xf1efe9, crema: 0xe6d9bd, concreto: 0x9a9c9b,
@@ -81,7 +83,8 @@
     }
   }
 
-  function maskCanvas(mask) {
+  function maskCanvas(mask, arr) {
+    arr = arr || mask.floor;
     var c = document.createElement('canvas');
     c.width = mask.nx; c.height = mask.ny;
     var g = c.getContext('2d');
@@ -89,7 +92,7 @@
     for (j = 0; j < mask.ny; j++) {
       row = mask.ny - 1 - j;              // la fila 0 de la imagen es el norte
       for (i = 0; i < mask.nx; i++) {
-        if (mask.floor[j * mask.nx + i]) { idx = (row * mask.nx + i) * 4; img.data[idx + 3] = 255; }
+        if (arr[j * mask.nx + i]) { idx = (row * mask.nx + i) * 4; img.data[idx + 3] = 255; }
       }
     }
     g.putImageData(img, 0, 0);
@@ -152,6 +155,16 @@
       glass: new THREE.MeshStandardMaterial({ color: 0x9fc6e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.28, depthWrite: false })
     };
     mats.glass.clippingPlanes = [cutPlane];
+    mats.roofTile = mat(0x5a4a45, 0.85);
+    mats.roofTile.side = THREE.DoubleSide;
+    mats.roofFlat = mat(0x6b6e72, 0.9);
+    mats.gable = mat(WALL_COLORS.blanco, 0.92);
+    mats.gable.side = THREE.DoubleSide;
+    var furnMats = {};
+    function furnMat(color) {
+      if (!furnMats[color]) furnMats[color] = mat(color, 0.7);
+      return furnMats[color];
+    }
 
     // suelo exterior con cuadrícula de referencia
     var groundMat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
@@ -160,11 +173,12 @@
     scene.add(ground);
 
     var st = {
-      active: false, units: 'ft', objects: [], s: null, model: null, mask: null, info: null,
-      mode: 'orbit', raf: 0, anim: null, keys: {}, lastT: 0, floorKey: ''
+      active: false, units: 'ft', objects: [], s: null, model: null, info: null,
+      mode: 'orbit', raf: 0, anim: null, keys: {}, lastT: 0, floorKey: '',
+      lv: [], stairs: [], bounds: null, topElev: 0, totalH: 2.44, shown: 1
     };
     var orbit = { target: new THREE.Vector3(), theta: 0.61, phi: 1.0, radius: 20 };
-    var walk = { pos: new THREE.Vector3(0, EYE, 0), yaw: 0, pitch: 0 };
+    var walk = { pos: new THREE.Vector3(0, EYE, 0), yaw: 0, pitch: 0, base: 0 };
 
     /* ---- escena ---- */
     function disposeGroup() {
@@ -176,7 +190,7 @@
     }
 
     function boundsInfo() {
-      var b = st.model && st.model.bounds;
+      var b = st.bounds;
       if (!b) return { cx: 0, cz: 0, w: 10, d: 10, r: 8 };
       var w = b.maxx - b.minx, d = b.maxy - b.miny;
       return { cx: (b.minx + b.maxx) / 2, cz: -(b.miny + b.maxy) / 2, w: w, d: d, r: Math.hypot(w, d) / 2 };
@@ -195,53 +209,143 @@
       groundMat.map = tex; groundMat.needsUpdate = true;
     }
 
-    function addPart(p) {
-      var mesh = new THREE.Mesh(new THREE.BoxGeometry(p.len, p.h1 - p.h0, p.thick), mats[p.kind]);
-      mesh.position.set(p.c[0], (p.h0 + p.h1) / 2, -p.c[1]);
+    function addPart(p, yOff) {
+      var mesh = new THREE.Mesh(new THREE.BoxGeometry(p.len, p.h1 - p.h0, p.thick), p.kind === 'furn' ? furnMat(p.color) : mats[p.kind]);
+      mesh.position.set(p.c[0], (p.h0 + p.h1) / 2 + (yOff || 0), -p.c[1]);
       mesh.rotation.y = p.ang;
       mesh.castShadow = p.kind !== 'glass';
       mesh.receiveShadow = p.kind !== 'glass';
       group.add(mesh);
     }
 
+    function levelPlane(mk, arr, y, material, ceiling) {
+      var ww = mk.nx * mk.cell, hh = mk.ny * mk.cell;
+      var mesh = new THREE.Mesh(new THREE.PlaneGeometry(ww, hh), material);
+      mesh.rotation.x = ceiling ? Math.PI / 2 : -Math.PI / 2;
+      mesh.position.set(mk.ox + ww / 2, y, -(mk.oy + hh / 2));
+      mesh.receiveShadow = true; mesh.userData.own = true;
+      return mesh;
+    }
+
+    function addRoof(topModel, y) {
+      var b = topModel && topModel.bounds, kind = st.s.roof;
+      if (!b || (kind !== 'flat' && kind !== 'gable')) return;
+      var ov = 0.45, cx = (b.minx + b.maxx) / 2, cz = -(b.miny + b.maxy) / 2;
+      var bw = b.maxx - b.minx, bd = b.maxy - b.miny;
+      if (kind === 'flat') {
+        var slab = new THREE.Mesh(new THREE.BoxGeometry(bw + 2 * 0.25, 0.18, bd + 2 * 0.25), mats.roofFlat);
+        slab.position.set(cx, y + 0.09, cz); slab.castShadow = true; slab.receiveShadow = true;
+        slab.userData.roof = true; group.add(slab);
+        return;
+      }
+      var alongX = bw >= bd;
+      var hl = (alongX ? bw : bd) / 2 + ov, hw = (alongX ? bd : bw) / 2 + ov, rise = hw * 0.5, y0 = y - ov * 0.5 + 0.01;
+      // dos faldones (local: x a lo largo de la cumbrera, z hacia el alero)
+      var pos = new Float32Array([
+        -hl, y0, -hw, hl, y0, -hw, hl, y0 + rise, 0, -hl, y0, -hw, hl, y0 + rise, 0, -hl, y0 + rise, 0,
+        -hl, y0 + rise, 0, hl, y0 + rise, 0, hl, y0, hw, -hl, y0 + rise, 0, hl, y0, hw, -hl, y0, hw
+      ]);
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.computeVertexNormals();
+      var roof = new THREE.Mesh(geo, mats.roofTile);
+      roof.castShadow = true; roof.receiveShadow = true;
+      // frontones triangulares en los extremos, del color de las paredes
+      var gw = hw - ov, gy = y + 0.0;
+      var tri = new Float32Array([
+        -(hl - ov), gy, -gw, -(hl - ov), gy, gw, -(hl - ov), y0 + rise, 0,
+        (hl - ov), gy, -gw, (hl - ov), gy, gw, (hl - ov), y0 + rise, 0
+      ]);
+      var geo2 = new THREE.BufferGeometry();
+      geo2.setAttribute('position', new THREE.BufferAttribute(tri, 3));
+      geo2.computeVertexNormals();
+      var gable = new THREE.Mesh(geo2, mats.gable);
+      gable.castShadow = true; gable.receiveShadow = true;
+      var rg = new THREE.Group();
+      rg.add(roof, gable);
+      rg.position.set(cx, 0, cz);
+      rg.rotation.y = alongX ? 0 : Math.PI / 2;
+      rg.userData.roof = true;
+      rg.traverse(function (o) { if (o.geometry) o.userData.roofPart = true; });
+      group.add(rg);
+    }
+
     function rebuild() {
       disposeGroup();
-      var s = st.s;
-      st.model = M.build(st.objects, { wallH: s.wallH, doorAngle: s.doors });
-      st.model.parts.forEach(addPart);
-      st.mask = st.model.walls.length ? M.floorMask(st.model.walls, {}) : null;
+      var s = st.s, ids = (s.levels && s.levels.length) ? s.levels : ['p1'];
+      var names = s.levelNames || [];
+      var shown = (typeof s.level === 'number' && s.level >= 0 && s.level < ids.length) ? s.level + 1 : ids.length;
+      st.shown = shown;
+      var byLv = {};
+      ids.forEach(function (id) { byLv[id] = []; });
+      st.objects.forEach(function (o) { (byLv[o.lv] || byLv[ids[0]]).push(o); });
 
-      var rooms = st.mask && st.mask.ok ? st.mask.rooms : [];
+      var pitch = s.wallH + SLAB, bounds = null, totals = { walls: 0, doors: 0, windows: 0 };
+      var allRooms = [], levelInfo = [], topModel = null;
+      st.lv = []; st.stairs = [];
+
+      for (var i = 0; i < shown; i++) {
+        var objs = byLv[ids[i]], elev = i * pitch, hasUp = i < shown - 1;
+        var model = M.build(objs, { wallH: s.wallH + (hasUp ? SLAB : 0), doorAngle: s.doors });
+        model.parts.forEach(function (p) { addPart(p, elev); });
+        totals.walls += model.stats.walls; totals.doors += model.stats.doors; totals.windows += model.stats.windows;
+        if (model.bounds) {
+          var mb = model.bounds;
+          bounds = bounds ? { minx: Math.min(bounds.minx, mb.minx), miny: Math.min(bounds.miny, mb.miny), maxx: Math.max(bounds.maxx, mb.maxx), maxy: Math.max(bounds.maxy, mb.maxy) } : { minx: mb.minx, miny: mb.miny, maxx: mb.maxx, maxy: mb.maxy };
+        }
+        objs.filter(function (o) { return o.type === 'furn'; }).forEach(function (f) {
+          var isStair = f.kind === 'escalera';
+          M.furnParts(f, pitch).forEach(function (p) { addPart(p, elev); });
+          if (isStair) st.stairs.push({ f: f, elev: elev, rise: pitch });
+        });
+        var mask = model.walls.length ? M.floorMask(model.walls, {}) : null;
+        st.lv.push({ id: ids[i], elev: elev, model: model, mask: mask });
+        var rooms = mask && mask.ok ? mask.rooms : [];
+        levelInfo.push({ name: names[i] || ('Piso ' + (i + 1)), rooms: rooms.length, area: rooms.reduce(function (a, r) { return a + r.area; }, 0) });
+        rooms.forEach(function (r) { allRooms.push(r.area); });
+        if (i === shown - 1) topModel = model;
+      }
+      st.bounds = bounds;
+      st.totalH = (shown - 1) * pitch + s.wallH;
+      st.topElev = (shown - 1) * pitch;
+      st.model = topModel;
       st.info = {
-        walls: st.model.stats.walls, doors: st.model.stats.doors, windows: st.model.stats.windows,
-        rooms: rooms.map(function (r) { return r.area; }),
-        area: rooms.reduce(function (a, r) { return a + r.area; }, 0)
+        walls: totals.walls, doors: totals.doors, windows: totals.windows,
+        rooms: allRooms, area: allRooms.reduce(function (a, r) { return a + r; }, 0), levels: levelInfo
       };
 
-      if (st.mask && st.mask.ok) {
-        var mk = st.mask, mc = maskCanvas(mk);
-        var ww = mk.nx * mk.cell, hh = mk.ny * mk.cell;
-        var kind = FLOOR_KINDS[s.floor] ? s.floor : 'madera-clara';
+      // pisos y cielos (con huecos donde sube una escalera)
+      var kind = FLOOR_KINDS[s.floor] ? s.floor : 'madera-clara';
+      for (var k = 0; k < st.lv.length; k++) {
+        var L = st.lv[k], mk = L.mask;
+        if (!mk || !mk.ok) continue;
+        var below = st.stairs.filter(function (q) { return k > 0 && Math.abs(q.elev - st.lv[k - 1].elev) < 1e-6; });
+        var here = st.stairs.filter(function (q) { return Math.abs(q.elev - L.elev) < 1e-6; });
+        var floorArr = mk.floor, ceilArr = mk.floor;
+        if (below.length) { floorArr = Uint8Array.from(mk.floor); below.forEach(function (q) { M.carve(mk, floorArr, q.f, 0.02); }); }
+        if (here.length) { ceilArr = Uint8Array.from(mk.floor); here.forEach(function (q) { M.carve(mk, ceilArr, q.f, 0.02); }); }
+
+        var mcF = maskCanvas(mk, floorArr);
         var floorMat = new THREE.MeshStandardMaterial({
-          map: maskedTexture(mk, mc, function (g, W, H, ppm) { paintFloor(g, kind, W, H, ppm); }, aniso),
+          map: maskedTexture(mk, mcF, function (g, W, H, ppm) { paintFloor(g, kind, W, H, ppm); }, aniso),
           alphaTest: 0.5, roughness: FLOOR_KINDS[kind].rough, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
         });
-        var floor = new THREE.Mesh(new THREE.PlaneGeometry(ww, hh), floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.set(mk.ox + ww / 2, 0.003, -(mk.oy + hh / 2));
-        floor.receiveShadow = true; floor.userData.own = true;
-        group.add(floor);
+        floorMat.clippingPlanes = [cutPlane];
+        group.add(levelPlane(mk, floorArr, L.elev + 0.003, floorMat, false));
 
+        var mcC = ceilArr === floorArr ? mcF : maskCanvas(mk, ceilArr);
         var ceilMat = new THREE.MeshStandardMaterial({
-          map: maskedTexture(mk, mc, function (g, W, H) { g.fillStyle = '#f4f3ef'; g.fillRect(0, 0, W, H); }, aniso),
+          map: maskedTexture(mk, mcC, function (g, W, H) { g.fillStyle = '#f4f3ef'; g.fillRect(0, 0, W, H); }, aniso),
           alphaTest: 0.5, roughness: 0.9, side: THREE.DoubleSide
         });
-        var ceil = new THREE.Mesh(new THREE.PlaneGeometry(ww, hh), ceilMat);
-        ceil.rotation.x = Math.PI / 2;
-        ceil.position.set(mk.ox + ww / 2, s.wallH + 0.001, -(mk.oy + hh / 2));
-        ceil.castShadow = true; ceil.receiveShadow = true; ceil.userData.own = true; ceil.userData.ceiling = true;
+        ceilMat.clippingPlanes = [cutPlane];
+        var ceil = levelPlane(mk, ceilArr, L.elev + s.wallH + 0.001, ceilMat, true);
+        ceil.userData.ceiling = true; ceil.userData.lower = k < st.lv.length - 1;
+        ceil.castShadow = !ceil.userData.lower;       // los cielos de pisos de abajo no dan sombra: dejaban una franja oscura en la fachada
         group.add(ceil);
       }
+      addRoof(topModel, st.topElev + s.wallH);
+
       applyLook();
       applySun();
       refreshCeiling();
@@ -249,7 +353,7 @@
 
     function refreshCeiling() {
       group.children.forEach(function (o) {
-        if (o.userData.ceiling) o.visible = !!st.s.roof || st.mode === 'walk';
+        if (o.userData.ceiling) o.visible = o.userData.lower || (st.s.roof && st.s.roof !== 'none') || st.mode === 'walk';
       });
     }
 
@@ -257,8 +361,9 @@
     function applyLook() {
       var s = st.s;
       mats.wall.color.setHex(WALL_COLORS[s.wallColor] != null ? WALL_COLORS[s.wallColor] : WALL_COLORS.blanco);
+      mats.gable.color.copy(mats.wall.color);
       mats.wall.roughness = s.wallColor === 'concreto' ? 0.97 : 0.9;
-      cutPlane.constant = s.cut > 0 ? s.cut : 1e5;
+      cutPlane.constant = s.cut > 0 ? st.topElev + s.cut : 1e5;
       renderer.shadowMap.enabled = !!s.shadows;
       sun.castShadow = !!s.shadows;
       var key = (s.shadows ? 1 : 0) + '|' + (s.cut > 0 ? 1 : 0);
@@ -305,12 +410,12 @@
 
     function fitRadius(top) {
       var b = boundsInfo(), t = Math.tan(camera.fov * Math.PI / 360);
-      if (top) return Math.max((b.d / 2) / t, (b.w / 2) / (t * camera.aspect)) * 1.18 + st.s.wallH;
-      return Math.max(b.r * 0.95 / t, 4);
+      if (top) return Math.max((b.d / 2) / t, (b.w / 2) / (t * camera.aspect)) * 1.18 + st.totalH;
+      return Math.max(Math.hypot(b.r, st.totalH / 2) * 0.95 / t, 4);
     }
     function targetPoint() {
       var b = boundsInfo();
-      return new THREE.Vector3(b.cx, st.mode === 'top' ? 0 : st.s.wallH * 0.3, b.cz);
+      return new THREE.Vector3(b.cx, st.mode === 'top' ? 0 : st.totalH * 0.3, b.cz);
     }
 
     function tweenOrbit(to, ms) {
@@ -335,8 +440,12 @@
       st.anim = null;
       if (mode === 'walk') {
         camera.fov = 70; camera.updateProjectionMatrix();
-        var s = st.mask && st.mask.ok ? st.mask.start : [0, 0];
-        walk.pos.set(s[0], EYE, -s[1]);
+        var sv = st.s, wl = typeof sv.level === 'number' ? sv.level : (sv.lvActive || 0);
+        wl = clamp(wl, 0, Math.max(0, st.lv.length - 1));
+        var lvl = st.lv[wl], mkw = lvl && lvl.mask;
+        var s = mkw && mkw.ok ? mkw.start : [boundsInfo().cx, -boundsInfo().cz];
+        walk.base = lvl ? lvl.elev : 0;
+        walk.pos.set(s[0], walk.base + EYE, -s[1]);
         walk.pitch = 0;
         // mirar hacia el lado con más espacio: el centro del plano si estamos lejos de él, si no, hacia el norte
         var b = boundsInfo(), dx = b.cx - walk.pos.x, dz = b.cz - walk.pos.z;
@@ -362,8 +471,16 @@
     }
 
     function walkTo(x, z) {
-      st.anim = { walk: true, t0: performance.now(), dur: 450, from: walk.pos.clone(), to: new THREE.Vector3(x, EYE, z) };
+      st.anim = { walk: true, t0: performance.now(), dur: 450, from: walk.pos.clone(), to: new THREE.Vector3(x, walk.pos.y, z) };
       requestRender();
+    }
+
+    function stairAt(x, y) {
+      for (var i = 0; i < st.stairs.length; i++) {
+        var q = st.stairs[i], l = F.toLocal(q.f, x, y);
+        if (Math.abs(l[0]) <= q.f.w / 2 && Math.abs(l[1]) <= q.f.d / 2) return { elev: q.elev, rise: q.rise, t: clamp((l[1] + q.f.d / 2) / q.f.d, 0, 1) };
+      }
+      return null;
     }
 
     /* ---- bucle ---- */
@@ -396,6 +513,14 @@
           st.anim = st.anim && st.anim.walk ? null : st.anim;
           more = true;
         }
+      }
+      if (st.mode === 'walk') {
+        var si = stairAt(walk.pos.x, -walk.pos.z);
+        if (si) {
+          walk.pos.y = si.elev + si.t * si.rise + EYE;
+          if (si.t > 0.97) walk.base = si.elev + si.rise; else if (si.t < 0.03) walk.base = si.elev;
+          more = more || !!(st.keys.w || st.keys.s || st.keys.a || st.keys.d);
+        } else walk.pos.y = walk.base + EYE;
       }
       applyCamera();
       renderer.render(scene, camera);
@@ -461,7 +586,7 @@
         var ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
         var ray = new THREE.Raycaster(); ray.setFromCamera(ndc, camera);
         var hit = new THREE.Vector3();
-        if (ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) {
+        if (ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -walk.base), hit)) {
           var b = boundsInfo();
           if (Math.abs(hit.x - b.cx) < b.w / 2 + 15 && Math.abs(hit.z - b.cz) < b.d / 2 + 15) walkTo(hit.x, hit.z);
         }
@@ -511,8 +636,9 @@
       var unitsChanged = units !== st.units;
       st.units = units;
       if (unitsChanged || !groundMat.map) updateGround();
-      var sig = JSON.stringify(objects.filter(function (o) { return o.type === 'wall' || o.type === 'door' || o.type === 'window'; }));
-      var heavy = resetCamera || !prev || prev.wallH !== st.s.wallH || prev.doors !== st.s.doors || prev.floor !== st.s.floor || !st.model || sig !== st.sig;
+      var sig = JSON.stringify(objects.filter(function (o) { return o.type === 'wall' || o.type === 'door' || o.type === 'window' || o.type === 'furn'; })) + '|' + (st.s.levels || []).join(',');
+      var heavy = resetCamera || !prev || prev.wallH !== st.s.wallH || prev.doors !== st.s.doors || prev.floor !== st.s.floor ||
+        prev.level !== st.s.level || prev.roof !== st.s.roof || !st.lv.length || sig !== st.sig;
       st.sig = sig;
       if (heavy) rebuild();
       else { applyLook(); applySun(); refreshCeiling(); }
@@ -542,7 +668,7 @@
         renderer.render(scene, camera);
         canvas.toBlob(cb, 'image/png');
       },
-      debug: function () { return { mode: st.mode, orbit: orbit, walk: walk, parts: group.children.length }; }
+      debug: function () { return { mode: st.mode, orbit: orbit, walk: walk, parts: group.children.length, levels: st.lv.length, stairs: st.stairs.length, shown: st.shown, totalH: st.totalH }; }
     };
   }
 

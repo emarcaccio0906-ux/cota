@@ -26,6 +26,10 @@
       <button class="icon-btn" id="btn-redo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer"></button>
     </div>
 
+    <div class="group">
+      <button class="txt-btn proj-btn" id="btn-proj" title="Tus proyectos" aria-label="Proyectos"><span class="proj-ico"></span><span class="long">Proyectos</span></button>
+    </div>
+
     <div class="group file-group">
       <button class="txt-btn" id="btn-new">Nuevo</button>
       <button class="txt-btn" id="btn-open">Abrir</button>
@@ -61,6 +65,8 @@
 
     <div class="float top-left" id="options" hidden></div>
 
+    <div class="float bottom-left" id="levelbar" aria-label="Pisos"></div>
+
     <div class="float top-right" id="selbar" hidden>
       <span id="sel-count" class="sel-count"></span>
       <button class="chip-btn" id="act-dup">Duplicar</button>
@@ -83,6 +89,14 @@
     </section>
     <section class="only-2d">
       <div class="panel-head">
+        <h2>Pisos</h2>
+        <button class="chip-btn" id="level-add">+ Piso</button>
+      </div>
+      <ul id="levels" class="layers"></ul>
+      <div id="level-tools" class="level-tools"></div>
+    </section>
+    <section class="only-2d">
+      <div class="panel-head">
         <h2>Capas</h2>
         <button class="chip-btn" id="layer-add">+ Capa</button>
       </div>
@@ -102,6 +116,8 @@
         <dt>V</dt><dd>Seleccionar</dd>
         <dt>L · P · R · C</dt><dd>Línea · Polilínea · Rectángulo · Círculo</dd>
         <dt>W · D · N · M</dt><dd>Pared · Puerta · Ventana · Cota</dd>
+        <dt>Q · U</dt><dd>Cuarto (nombre y área) · Mueble</dd>
+        <dt>R</dt><dd>Girar el mueble antes de ponerlo</dd>
         <dt>Shift</dt><dd>Ortogonal mientras lo mantienes</dd>
         <dt>Enter · Esc</dt><dd>Terminar · Cancelar</dd>
         <dt>Escribe un número</dt><dd>Medida exacta (12'6", 3.5m, 150cm). También 12&lt;45 para largo y ángulo</dd>
@@ -136,13 +152,47 @@
   </footer>
 </div>
 
-<dialog id="dlg-new">
+<dialog id="dlg-new" class="wide">
+  <div class="dlg-body">
+    <h3>Proyecto nuevo</h3>
+    <p>Empieza con una plantilla o en blanco. Tu proyecto actual se queda guardado en Proyectos.</p>
+    <div id="tpl-grid" class="tpl-grid"></div>
+    <div class="dlg-actions"><button class="pill ghost" id="tpl-cancel" type="button">Cancelar</button></div>
+  </div>
+</dialog>
+
+<dialog id="dlg-proj" class="wide">
+  <div class="dlg-body">
+    <div class="proj-head"><h3>Proyectos</h3><span id="proj-plan" class="plan-tag"></span></div>
+    <p>Se guardan en este navegador. La cuenta y el guardado en la nube vienen después; mientras tanto usa Guardar para tener un archivo de respaldo.</p>
+    <ul id="proj-list" class="proj-list"></ul>
+    <div class="dlg-actions">
+      <button class="pill ghost" id="proj-close" type="button" autofocus>Cerrar</button>
+      <button class="pill" id="proj-new" type="button">+ Proyecto nuevo</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-ask">
   <form method="dialog" class="dlg-body">
-    <h3>¿Empezar un dibujo nuevo?</h3>
-    <p>Se borra el dibujo actual. Si lo quieres conservar, usa Guardar primero.</p>
+    <h3 id="ask-title"></h3>
+    <p id="ask-text"></p>
+    <input id="ask-input" type="text" maxlength="60" hidden autocomplete="off">
     <div class="dlg-actions">
       <button class="pill ghost" value="cancel">Cancelar</button>
-      <button class="pill" value="ok">Dibujo nuevo</button>
+      <button class="pill" value="ok" id="ask-ok">Aceptar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-pro">
+  <form method="dialog" class="dlg-body">
+    <h3>Esto es parte de Cota Pro</h3>
+    <p id="pro-text"></p>
+    <p class="pro-note">Todavía no se cobra nada. Mientras probamos puedes activar el modo de pruebas y usar todo sin límites.</p>
+    <div class="dlg-actions">
+      <button class="pill ghost" value="cancel">Ahora no</button>
+      <button class="pill" value="ok">Activar modo de pruebas</button>
     </div>
   </form>
 </dialog>
@@ -151,7 +201,9 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="js/units.js"></script>
+<script src="js/furniture.js"></script>
 <script src="js/geom.js"></script>
+<script src="js/templates.js"></script>
 <script src="js/model3d.js"></script>
 <script src="js/view3d.js"></script>
 <script src="js/app.js"></script>

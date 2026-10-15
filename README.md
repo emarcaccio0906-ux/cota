@@ -27,9 +27,19 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 - Exportar la vista 3D como PNG
 - Three.js r128 viene incluido en `vendor/` (MIT), no necesita internet
 
+## Fase 4: muebles, cuartos, plantillas y pisos
+
+- **Muebles**: biblioteca de más de 20 piezas (cama, sofá, mesa, cocina, baño, escalera, carro...), con símbolo en 2D y modelo en 3D. Se pegan solos a la pared; **R** o "Girar 90°" los gira
+- **Cuartos**: herramienta Cuarto para ponerles nombre; el área se calcula sola y se muestra en el plano (se puede apagar)
+- **Plantillas**: en blanco, estudio, apartamento, casa, casa de dos pisos y garaje
+- **Varios pisos**: niveles con escaleras (el hueco se abre en el piso de arriba), techo plano o a dos aguas, selector "Ver" en 3D y recorrido que sube escaleras
+- **Proyectos**: varios planos guardados en el navegador con miniatura; duplicar, abrir y borrar
+- **Plan gratis**: 3 proyectos y 2 pisos. Hay "modo de pruebas" para quitar los límites mientras se prueba. Cuentas y nube necesitan un backend y todavía no existen
+
 ## Probar
 
     node tests/test.js      # 77 pruebas de unidades, geometría y modelo 3D
+    node tests/test2.js     # 28 pruebas de muebles, cuartos, escaleras y plantillas
     python3 -m http.server  # y abre http://localhost:8000
 
 ## Publicar como sitio aparte
@@ -39,6 +49,5 @@ o Netlify / Vercel arrastrando la carpeta (sirven con repo privado).
 
 ## Lo que sigue
 
-Cuartos con área en 2D · láminas e impresión con cajetín · PDF a escala y DXF · offset, recortar y escalar ·
-biblioteca de muebles · cómputo de materiales · plantillas · compartir por enlace · cuentas y nube ·
-varios pisos, escaleras y techos.
+Láminas e impresión con cajetín · PDF a escala y DXF · offset, recortar y escalar ·
+cómputo de materiales · compartir por enlace · cuentas y nube.

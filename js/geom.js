@@ -12,6 +12,8 @@
 (function (root) {
   'use strict';
 
+  var F = (typeof module !== 'undefined' && module.exports) ? require('./furniture.js') : root.CotaFurn;
+
   function add(a, b) { return [a[0] + b[0], a[1] + b[1]]; }
   function sub(a, b) { return [a[0] - b[0], a[1] - b[1]]; }
   function mul(a, k) { return [a[0] * k, a[1] * k]; }
@@ -126,6 +128,8 @@
       case 'rect': pts = rectCorners(o); break;
       case 'circle': pts = [[o.c[0] - o.r, o.c[1] - o.r], [o.c[0] + o.r, o.c[1] + o.r]]; break;
       case 'wall': pts = [o.a, o.b]; break;
+      case 'furn': pts = F.corners(o); break;
+      case 'room': pts = [[o.p[0] - 0.2, o.p[1] - 0.2], [o.p[0] + 0.2, o.p[1] + 0.2]]; break;
       case 'door': case 'window':
         var w = byId && byId[o.wall];
         if (!w) return null;
@@ -159,6 +163,8 @@
         for (i = 0; i < 4; i++) best = Math.min(best, segDist(p, c[i], c[(i + 1) % 4]).d);
         return best;
       case 'circle': return Math.abs(dist(p, o.c) - o.r);
+      case 'furn': return F.distTo(o, p[0], p[1]);
+      case 'room': return Math.max(0, dist(p, o.p) - 0.25);
       case 'wall': return Math.max(0, segDist(p, o.a, o.b).d - o.t / 2);
       case 'door': case 'window':
         var w = byId && byId[o.wall];
@@ -237,6 +243,7 @@
       case 'line': case 'rect': case 'wall': case 'dim': mv(o.a); mv(o.b); break;
       case 'polyline': o.pts.forEach(mv); break;
       case 'circle': mv(o.c); break;
+      case 'furn': case 'room': mv(o.p); break;
       default: break; // las aberturas se mueven con su pared
     }
   }
@@ -254,6 +261,8 @@
       case 'line': case 'wall': case 'dim': rt(o.a); rt(o.b); break;
       case 'polyline': o.pts.forEach(rt); break;
       case 'circle': rt(o.c); break;
+      case 'furn': rt(o.p); o.ang = (((o.ang || 0) + ang * 180 / Math.PI) % 360 + 360) % 360; break;
+      case 'room': rt(o.p); break;
       case 'rect':
         o.type = 'polyline';
         o.pts = rectCorners(o).map(function (p) { return rotatePoint(p, c, ang); });
