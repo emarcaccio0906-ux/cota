@@ -400,3 +400,13 @@ canvas.swatch { width: 60px; height: 10px; border-radius: 3px; border: 1px solid
   .mid-right { top: auto; bottom: 64px; max-height: 50%; }
   #draftbar .chip-btn { height: 32px; padding: 0 10px; }
 }
+
+/* ---------- editar medidas ---------- */
+.xy { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.xy input { min-width: 0; flex: 1 1 0; width: 100%; }
+.xy .chip-btn { flex: none; }
+.xy-in { display: flex; align-items: center; gap: 4px; flex: 1 1 0; min-width: 0; }
+.xy-in span { color: var(--muted); font-size: 11px; width: 10px; }
+.field-pair { display: flex; gap: 6px; min-width: 0; }
+.field-pair input { flex: 1 1 auto; min-width: 0; }
+.field-pair .mini-sel { flex: none; width: 44px; }
