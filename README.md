@@ -29,12 +29,13 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 
 ## Fase 4: muebles, cuartos, plantillas y pisos
 
-- **Muebles**: biblioteca de más de 20 piezas (cama, sofá, mesa, cocina, baño, escalera, carro...), con símbolo en 2D y modelo en 3D. Se pegan solos a la pared; **R** o "Girar 90°" los gira
+- **Muebles**: biblioteca de más de 50 piezas (camas, mesa de noche, cuadros, espejos, alfombras, plantas, sofá en L, isla, escritorio, carro, moto...), con símbolo en 2D y modelo en 3D. Se pegan solos a la pared; **R** o "Girar 90°" los gira
 - **Cuartos**: herramienta Cuarto para ponerles nombre; el área se calcula sola y se muestra en el plano (se puede apagar)
 - **Plantillas**: en blanco, estudio, apartamento, casa, casa de dos pisos y garaje
 - **Varios pisos**: niveles con escaleras (el hueco se abre en el piso de arriba), techo plano o a dos aguas, selector "Ver" en 3D y recorrido que sube escaleras
 - **Proyectos**: varios planos guardados en el navegador con miniatura; duplicar, abrir y borrar
 - **Plan gratis**: 3 proyectos y 2 pisos. Hay "modo de pruebas" para quitar los límites mientras se prueba. Cuentas y nube necesitan un backend y todavía no existen
+- **Editar con medidas exactas**: largo, ángulo, inicio y fin de paredes (las esquinas pegadas se mueven juntas y el cuarto se estira), distancia de puertas y ventanas desde cada extremo, alto y antepecho, ancho, fondo, alto, altura desde el piso y centro de los muebles. Mover exacto con X/Y y flechas del teclado
 
 ## Modo clase: dibujo técnico como en papel
 
