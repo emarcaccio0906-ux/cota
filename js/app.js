@@ -45,7 +45,7 @@
   var GRID_PAPER_FT = [['1/16"', 1 / 16], ['1/8"', 1 / 8], ['1/4"', 1 / 4], ['1/2"', 1 / 2], ['1"', 1], ['1/10" (ingeniería)', 0.1]];
   var GRID_PAPER_M = [['1 mm', 1 / 25.4], ['2 mm', 2 / 25.4], ['5 mm', 5 / 25.4], ['1 cm', 10 / 25.4]];
   var TEXT_SIZES = [['3/32" (notas)', 3 / 32], ['1/8" (normal)', 1 / 8], ['3/16" (subtítulos)', 3 / 16], ['1/4" (títulos)', 1 / 4], ['1/2" (grande)', 1 / 2]];
-  var INST_ORDER = ['tsq', 't3060', 't45', 'ruler'];
+  var INST_ORDER = ['tsq', 't3060', 't45', 'ruler', 'regla'];
   var GRID_TYPES = [['En blanco', 'none', 'Hoja lisa, sin cuadrícula'], ['Cuadrada', 'sq', 'Líneas horizontales y verticales'], ['Isométrica', 'iso', 'Líneas a 30° y verticales'], ['Las dos', 'both', 'Cuadrada con la isométrica encima']];
   var uiLevel = 'simple', skipHome = false;
   var profile = { name: '', course: '', school: '' };
@@ -531,6 +531,8 @@
           it.on = q.on === true;
           if (id === 'tsq') { if (isNum(q.y)) it.y = q.y; }
           else { if (isPt(q.p)) it.p = q.p.slice(); if (isNum(q.ang)) it.ang = q.ang; it.flip = q.flip === true; }
+          if (isNum(q.size) && (q.size === 0 || (q.size >= 2 && q.size <= 48))) it.size = q.size;
+          if (id === 'ruler' && typeof q.face === 'string' && (q.face === '' || D.scaleById(q.face))) it.face = q.face;
         });
         if (typeof p.instOpen === 'boolean') instOpen = p.instOpen;
         if (p.pen && D.penById(p.pen.type) && D.leadById(p.pen.lead)) pen = { type: p.pen.type, lead: p.pen.lead };
@@ -610,6 +612,10 @@
       });
       if (paper) drawInstruments();
       drawDraft(map);
+      if (mouse.over || ptr) {
+        var rd = mouse.snapInfo || (paper && !ptr ? rulerReading(mouse.raw) : '');
+        if (rd) { var RS = w2s(mouse.p); drawTag(rd, RS[0], RS[1] - 52, true); }
+      }
       drawBox();
       drawSnapMarker();
     }
@@ -761,8 +767,8 @@
 
   function instWorld(it) {
     var u = paperU(), o = doc.paper.origin;
-    if (it.kind === 'tsq') return { kind: 'tsq', y: o[1] + it.y * u };
-    return { kind: it.kind, p: [o[0] + it.p[0] * u, o[1] + it.p[1] * u], ang: it.ang || 0, flip: !!it.flip };
+    if (it.kind === 'tsq') return { kind: 'tsq', y: o[1] + it.y * u, size: it.size || 0 };
+    return { kind: it.kind, p: [o[0] + it.p[0] * u, o[1] + it.p[1] * u], ang: it.ang || 0, flip: !!it.flip, size: it.size || 0 };
   }
   function instGeomOf(id) { return D.instGeom(instWorld(insts[id]), paperU(), sheetLay().sheet); }
   function shownInsts() { return clase() && mode === '2d' && !exporting ? INST_ORDER.filter(function (id) { return insts[id].on; }) : []; }
@@ -782,7 +788,7 @@
         poly.forEach(function (q, i) { var S = w2s(q); if (i) ctx.lineTo(S[0], S[1]); else ctx.moveTo(S[0], S[1]); });
         ctx.closePath();
       });
-      ctx.fillStyle = id === 'ruler' ? 'rgba(250, 249, 242, 0.93)' : id === 'tsq' ? 'rgba(222, 200, 160, 0.62)' : 'rgba(110, 185, 255, 0.2)';
+      ctx.fillStyle = id === 'ruler' ? 'rgba(250, 249, 242, 0.93)' : id === 'regla' ? 'rgba(236, 244, 250, 0.9)' : id === 'tsq' ? 'rgba(222, 200, 160, 0.62)' : 'rgba(110, 185, 255, 0.2)';
       ctx.fill('evenodd');
       ctx.lineWidth = act ? 2 : 1.2;
       ctx.strokeStyle = act ? colors.accent : 'rgba(40, 95, 160, 0.75)';
@@ -790,7 +796,7 @@
       // canto de trabajo un poco más marcado
       ctx.lineWidth = act ? 2.4 : 1.6;
       g.edges.forEach(function (e) { var A = w2s(e.a), B = w2s(e.b); ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke(); });
-      if (id === 'ruler') drawRulerMarks(it, u, pp);
+      if (id === 'ruler' || id === 'regla') drawRulerMarks(it, u, pp);
       if (id === 't3060' || id === 't45') {
         var lab = id === 't45' ? '45°' : '30°-60°', c = w2s(D.toWorld(instWorld(it), u, id === 't45' ? [1.6, 1.6] : [1.1, 2.6]));
         if (pp * 0.3 > 5) {
@@ -811,7 +817,9 @@
     });
   }
   function drawRulerMarks(it, u, pp) {
-    var wi = instWorld(it), sc = curScale(), rt = D.rulerTicks(sc.k, units === 'm');
+    var wi = instWorld(it), len = D.sizeOf(it), plain = it.kind === 'regla', sc = faceScale(it);
+    var metricFace = plain ? units === 'm' : D.SCALES_M.indexOf(sc) >= 0;
+    var rt = plain ? D.plainTicks(len, metricFace) : D.rulerTicks(sc.k, metricFace, len);
     var ang = -(it.ang || 0) * Math.PI / 180;
     ctx.strokeStyle = 'rgba(20, 24, 30, 0.85)'; ctx.fillStyle = 'rgba(20, 24, 30, 0.9)'; ctx.lineWidth = 1;
     var fs = 0.17 * pp, showLab = fs >= 6;
@@ -828,12 +836,34 @@
         var P = w2s(D.toWorld(wi, u, [t.x, t.h + 0.06]));
         ctx.save(); ctx.translate(P[0], P[1]); ctx.rotate(ang); ctx.fillText(t.label, 0, -fs * 0.1); ctx.restore();
       });
-      var T = w2s(D.toWorld(wi, u, [D.RULER.len - 1.6, D.RULER.w * 0.7]));
+      var T = w2s(D.toWorld(wi, u, [len - 1.6, (plain ? D.REGLA_W : D.RULER.w) * 0.7]));
       ctx.save(); ctx.translate(T[0], T[1]); ctx.rotate(ang);
-      ctx.font = '600 ' + (fs * 1.25) + 'px system-ui, sans-serif'; ctx.fillText(rt.title, 0, 0);
-      ctx.font = (fs * 0.8) + 'px system-ui, sans-serif'; ctx.fillText(units === 'm' ? 'metros' : (sc.id === 'full' ? 'pulgadas' : 'pies'), 0, fs * 1.1);
+      ctx.font = '600 ' + (fs * 1.25) + 'px system-ui, sans-serif'; ctx.fillText(plain ? 'Regla' : rt.title, 0, 0);
+      ctx.font = (fs * 0.8) + 'px system-ui, sans-serif'; ctx.fillText(plain ? rt.title : (metricFace ? 'metros' : (sc.id === 'full' ? 'pulgadas' : 'pies')), 0, fs * 1.1);
       ctx.restore();
     }
+  }
+
+  /** Cara del escalímetro: la que escogiste o la escala de la hoja. */
+  function faceScale(it) { var f = it && it.face ? D.scaleById(it.face) : null; return f || curScale(); }
+  /** Lectura de la regla o el escalímetro en el punto p (si p está sobre su canto). */
+  function rulerReading(p) {
+    var u = paperU(), tol = (SNAP_PX + 2) / view.scale / u, best = null;
+    shownInsts().forEach(function (id) {
+      var it = insts[id];
+      if (it.kind !== 'ruler' && it.kind !== 'regla') return;
+      var l = D.toLocal(instWorld(it), u, p), len = D.sizeOf(it);
+      if (Math.abs(l[1]) > tol || l[0] < -0.05 || l[0] > len + 0.05) return;
+      var zero = it.kind === 'regla' ? 0.15 : (function () { var sc = faceScale(it), m = D.SCALES_M.indexOf(sc) >= 0; return D.rulerTicks(sc.k, m, len).zero; })();
+      var paperIn = l[0] - zero, txt;
+      if (it.kind === 'regla') txt = 'Regla: ' + (units === 'm' ? (Math.round(paperIn * 25.4 * 10) / 10) + ' mm' : U.formatFtIn(paperIn * IN_M, 16));
+      else {
+        var sc = faceScale(it), real = paperIn * IN_M / sc.k, metric = D.SCALES_M.indexOf(sc) >= 0;
+        txt = 'Escalímetro ' + sc.short + ': ' + (metric ? U.formatLength(real, 'm', 2) : U.formatFtIn(real, 4));
+      }
+      if (!best || Math.abs(l[1]) < best.d) best = { d: Math.abs(l[1]), text: txt };
+    });
+    return best ? best.text : '';
   }
 
   function drawAxes() {
@@ -1274,6 +1304,8 @@
     var s = w2s(mouse.p), k = mouse.snap.kind;
     ctx.strokeStyle = colors.accent; ctx.fillStyle = colors.accent; ctx.lineWidth = 1.8; ctx.setLineDash([]);
     if (k === 'end') { ctx.strokeRect(s[0] - 6, s[1] - 6, 12, 12); }
+    else if (k === 'int') { ctx.beginPath(); ctx.moveTo(s[0] - 6, s[1] - 6); ctx.lineTo(s[0] + 6, s[1] + 6); ctx.moveTo(s[0] + 6, s[1] - 6); ctx.lineTo(s[0] - 6, s[1] + 6); ctx.stroke(); }
+    else if (k === 'on') { ctx.beginPath(); ctx.arc(s[0], s[1], 6, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.arc(s[0], s[1], 1.6, 0, Math.PI * 2); ctx.fill(); }
     else if (k === 'edge') { ctx.beginPath(); ctx.moveTo(s[0], s[1] - 7); ctx.lineTo(s[0] + 7, s[1]); ctx.lineTo(s[0], s[1] + 7); ctx.lineTo(s[0] - 7, s[1]); ctx.closePath(); ctx.stroke(); }
     else if (k === 'mid') { ctx.beginPath(); ctx.moveTo(s[0], s[1] - 7); ctx.lineTo(s[0] + 7, s[1] + 5); ctx.lineTo(s[0] - 7, s[1] + 5); ctx.closePath(); ctx.stroke(); }
     else { ctx.beginPath(); ctx.moveTo(s[0] - 5, s[1]); ctx.lineTo(s[0] + 5, s[1]); ctx.moveTo(s[0], s[1] - 5); ctx.lineTo(s[0], s[1] + 5); ctx.lineWidth = 1.2; ctx.stroke(); }
@@ -1294,6 +1326,79 @@
     });
   }
 
+  function fixedSnap(k) { return k === 'end' || k === 'mid' || k === 'int' || k === 'on'; }
+  /** Tramos rectos de un objeto (para cruces y medidas sobre la línea). */
+  function objSegments(o) {
+    var out = [], i, c;
+    switch (o.type) {
+      case 'line': out.push([o.a, o.b]); break;
+      case 'polyline':
+        for (i = 1; i < o.pts.length; i++) out.push([o.pts[i - 1], o.pts[i]]);
+        if (o.closed && o.pts.length > 2) out.push([o.pts[o.pts.length - 1], o.pts[0]]);
+        break;
+      case 'rect': c = G.rectCorners(o); for (i = 0; i < 4; i++) out.push([c[i], c[(i + 1) % 4]]); break;
+      case 'wall': if (G.dist(o.a, o.b) > 1e-9) { c = quad(o.a, o.b, o.t, true, true); out.push([c[0], c[1]], [c[3], c[2]]); } break;
+      default: break;
+    }
+    return out;
+  }
+  function segInter(a, b, c, d) {
+    var r = G.sub(b, a), q = G.sub(d, c), den = r[0] * q[1] - r[1] * q[0];
+    if (Math.abs(den) < 1e-12) return null;
+    var w = G.sub(c, a), t = (w[0] * q[1] - w[1] * q[0]) / den, u2 = (w[0] * r[1] - w[1] * r[0]) / den;
+    if (t < -1e-9 || t > 1 + 1e-9 || u2 < -1e-9 || u2 > 1 + 1e-9) return null;
+    return G.add(a, G.mul(r, t));
+  }
+  /** Enganche en los dibujos: un cruce de dos líneas, o un punto sobre la línea a una medida exacta desde su extremo más cercano. */
+  function objSnap(raw) {
+    var tol = SNAP_PX / view.scale, segs = [];
+    snapTargets().forEach(function (o) { objSegments(o).forEach(function (sg) { if (G.segDist(raw, sg[0], sg[1]).d <= tol * 2.5) segs.push(sg); }); });
+    // las escuadras y reglas también cruzan con las líneas
+    instEdges().forEach(function (e) { if (G.segDist(raw, e.a, e.b).d <= tol * 2.5) segs.push([e.a, e.b, true]); });
+    var best = null, i, j;
+    for (i = 0; i < segs.length; i++) for (j = i + 1; j < segs.length; j++) {
+      if (segs[i][2] && segs[j][2]) continue;
+      var x = segInter(segs[i][0], segs[i][1], segs[j][0], segs[j][1]);
+      if (x && G.dist(x, raw) <= tol && (!best || G.dist(x, raw) < best.d)) best = { p: x, d: G.dist(x, raw), kind: 'int', info: 'Cruce' };
+    }
+    if (best) return best;
+    var near = null;
+    segs.forEach(function (sg) { if (sg[2]) return; var r = G.segDist(raw, sg[0], sg[1]); if (r.d <= tol && (!near || r.d < near.r.d)) near = { sg: sg, r: r }; });
+    if (!near) return null;
+    var L = G.dist(near.sg[0], near.sg[1]), st = snapStep();
+    if (L < 1e-9 || !(st > 0)) return null;
+    var along = near.r.t * L, fromA = along <= L / 2, dd = fromA ? along : L - along;
+    dd = Math.round(dd / st) * st;
+    if (dd > L) dd = L;
+    var u = G.norm(G.sub(near.sg[1], near.sg[0])), p = fromA ? G.add(near.sg[0], G.mul(u, dd)) : G.sub(near.sg[1], G.mul(u, dd));
+    return { p: p, kind: 'on', info: fmt(dd) + ' desde el extremo · faltan ' + fmt(L - dd) };
+  }
+  /** Sobre el canto de una regla o escuadra: cae en las marcas de la regla, o a medidas del snap a lo largo del canto. */
+  function edgeMark(p, edge) {
+    var u = paperU(), out = { p: p, info: '' };
+    var hit = shownInsts().filter(function (id) {
+      var it = insts[id]; if (it.kind !== 'ruler' && it.kind !== 'regla') return false;
+      var g = instGeomOf(id); return g.edges.some(function (e) { return G.dist(e.a, edge.a) < 1e-9 && G.dist(e.b, edge.b) < 1e-9; });
+    })[0];
+    if (hit) {
+      var it = insts[hit], wi = instWorld(it), l = D.toLocal(wi, u, p), len = D.sizeOf(it), sc = faceScale(it);
+      var rt = it.kind === 'regla' ? D.plainTicks(len, units === 'm') : D.rulerTicks(sc.k, D.SCALES_M.indexOf(sc) >= 0, len);
+      var bx = null;
+      if (snapOn) rt.ticks.forEach(function (t) { if (bx === null || Math.abs(t.x - l[0]) < Math.abs(bx - l[0])) bx = t.x; });
+      if (bx !== null && Math.abs(bx - l[0]) * paperPx() < 10) out.p = D.toWorld(wi, u, [bx, 0]);
+      out.info = rulerReading(out.p);
+      return out;
+    }
+    if (!snapOn) return out;
+    if (Math.abs(edge.a[1] - edge.b[1]) < 1e-9 && Math.abs(edge.a[0] - edge.b[0]) > 1e-9) {     // canto horizontal (regla T): cae en la cuadrícula
+      out.p = [paperSnap(p)[0], edge.a[1]];
+      return out;
+    }
+    var L = G.dist(edge.a, edge.b), st = snapStep(), along = G.dist(edge.a, p);
+    if (L > 1e-9 && st > 0) { var d2 = Math.min(L, Math.round(along / st) * st); out.p = G.add(edge.a, G.mul(G.norm(G.sub(edge.b, edge.a)), d2)); out.info = fmt(d2) + ' por el canto'; }
+    return out;
+  }
+
   function updateCursor(sx, sy, shift) {
     mouse.sx = sx; mouse.sy = sy;
     mouse.raw = s2w(sx, sy);
@@ -1302,10 +1407,16 @@
     else s = { p: mouse.raw.slice(), kind: 'free' };
     if (snapOn && clase() && s.kind === 'free') s = { p: paperSnap(mouse.raw), kind: 'grid' };
     var drawTool = DRAW_TOOLS.indexOf(tool) >= 0 && tool !== 'door' && tool !== 'window';
-    // canto de una escuadra: el punto se pega al borde, como el lápiz contra la regla
-    if (drawTool && s.kind !== 'end' && s.kind !== 'mid') {
+    mouse.snapInfo = '';
+    // cruces entre líneas, y puntos sobre una línea a medidas exactas del snap
+    if (snapOn && drawTool && s.kind !== 'end' && s.kind !== 'mid') {
+      var os = objSnap(mouse.raw);
+      if (os) { s = { p: os.p, kind: os.kind }; mouse.snapInfo = os.info || ''; }
+    }
+    // canto de una escuadra o regla: el punto se pega al borde, como el lápiz contra la regla, y cae en sus marcas
+    if (drawTool && s.kind !== 'end' && s.kind !== 'mid' && s.kind !== 'int') {
       var es = D.snapToEdges(mouse.raw, instEdges(), SNAP_PX / view.scale);
-      if (es) s = { p: es.p, kind: 'edge' };
+      if (es) { var em = edgeMark(es.p, es.edge); s = { p: em.p, kind: 'edge' }; mouse.snapInfo = em.info; }
     }
     var p = s.p;
     var last = lastDraftPoint();
@@ -1314,16 +1425,16 @@
     mouse.polar = null; mouse.polarSrc = '';
     var guideDirs = (iso ? isoD.slice() : []).concat(D.edgeDirs(instEdges()));
     var cd = null;
-    if (!ortho && last && lineTool && s.kind !== 'end' && s.kind !== 'mid' && guideDirs.length) cd = D.constrainDir(last, mouse.raw, guideDirs, 4);
+    if (!ortho && last && lineTool && !fixedSnap(s.kind) && guideDirs.length) cd = D.constrainDir(last, mouse.raw, guideDirs, 4);
     if (s.kind === 'edge') {
       /* ya está sobre el canto */
-    } else if (ortho && last && lineTool && s.kind !== 'end' && s.kind !== 'mid') {
+    } else if (ortho && last && lineTool && !fixedSnap(s.kind)) {
       p = iso && doc.paper.gridType === 'iso' ? D.constrainDir(last, p, isoD, null).p : G.orthoPoint(last, p);
     } else if (cd) {
       var stp = snapOn ? snapStep() : 0, dl = stp > 0 ? Math.round(cd.len / stp) * stp : cd.len, ra = cd.ang * Math.PI / 180;
       p = [last[0] + Math.cos(ra) * dl, last[1] + Math.sin(ra) * dl];
       mouse.polar = cd.ang; mouse.polarSrc = iso && isoD.some(function (a) { return Math.abs((cd.ang % 180) - a) < 0.01; }) ? 'isométrico' : 'escuadra';
-    } else if (polarInc > 0 && last && lineTool && s.kind !== 'end' && s.kind !== 'mid') {
+    } else if (polarInc > 0 && last && lineTool && !fixedSnap(s.kind)) {
       // ángulo polar: se engancha cuando el cursor está a menos de 6° de un múltiplo del ángulo elegido
       var v = G.sub(mouse.raw, last), L = G.len(v);
       if (L > 1e-9) {
@@ -2393,7 +2504,7 @@
     nt.addEventListener('click', function () { toggleNight(); });
     bar.appendChild(nt);
     if (!instOpen) return;
-    var names = { tsq: 'Regla T', t3060: '30°-60°', t45: '45°', ruler: 'Escalímetro' };
+    var names = { tsq: 'Regla T', t3060: '30°-60°', t45: '45°', ruler: 'Escalímetro', regla: 'Regla' };
     INST_ORDER.forEach(function (id) {
       var b = el('button', { class: 'chip-btn db-btn', type: 'button', 'aria-pressed': String(insts[id].on), text: names[id] });
       b.addEventListener('click', function () {
@@ -2404,6 +2515,23 @@
       bar.appendChild(b);
     });
     var it = insts[activeInst], canAct = it && it.on && it.kind !== 'tsq';
+    if (it && it.on) {
+      bar.appendChild(el('div', { class: 'db-sep' }));
+      bar.appendChild(el('div', { class: 'db-label', text: names[activeInst] }));
+      var sz = el('select', { class: 'db-sel', 'aria-label': 'Tamaño de ' + names[activeInst] });
+      var szList = (it.kind === 'tsq' ? [[0, 'Toda la hoja']] : []).concat(D.SIZES[it.kind].map(function (n) { return [n, n + '"' + (it.kind === 't3060' || it.kind === 't45' ? ' de alto' : ' de largo')]; }));
+      var curSz = it.kind === 'tsq' ? (it.size || 0) : D.sizeOf(it);
+      szList.forEach(function (o) { var op = el('option', { value: String(o[0]), text: o[1] }); if (o[0] === curSz) op.selected = true; sz.appendChild(op); });
+      sz.addEventListener('change', function () { it.size = parseFloat(sz.value); savePrefs(); requestRender(); });
+      bar.appendChild(sz);
+      if (it.kind === 'ruler') {
+        var fc = el('select', { class: 'db-sel', 'aria-label': 'Cara del escalímetro' });
+        fc.appendChild(el('option', { value: '', text: 'Cara: la de la hoja' }));
+        D.SCALES_FT.concat(D.SCALES_M).forEach(function (x) { var op = el('option', { value: x.id, text: 'Cara ' + x.label }); if (x.id === it.face) op.selected = true; fc.appendChild(op); });
+        fc.addEventListener('change', function () { it.face = fc.value; savePrefs(); requestRender(); });
+        bar.appendChild(fc);
+      }
+    }
     bar.appendChild(el('div', { class: 'db-sep' }));
     [['Girar 15°', function () { it.ang = ((it.ang || 0) + 15) % 360; }], ['Girar 90°', function () { it.ang = ((it.ang || 0) + 90) % 360; }],
      ['Voltear', function () { it.flip = !it.flip; }], ['Derecha', function () { it.ang = 0; }]].forEach(function (a) {
@@ -3798,5 +3926,5 @@
     get projects() { return projects; }, get curId() { return curId; }, get pro() { return pro; },
     setLevel: setLevel, addLevel: addLevel, startFromTemplate: startFromTemplate, openProject: openProject, saveNow: saveNow,
     get furnKind() { return furnKind; }, set furnKind(v) { furnKind = v; }, get level() { return doc.level; },
-    get doc() { return doc; }, get view() { return view; }, get mode() { return mode; }, get view3d() { return view3d; }, get s3() { return s3; }, setTool: setTool, fitView: fitView, setMode: setMode, setCam: setCam };
+    get doc() { return doc; }, get mouse() { return mouse; }, get view() { return view; }, get mode() { return mode; }, get view3d() { return view3d; }, get s3() { return s3; }, setTool: setTool, fitView: fitView, setMode: setMode, setCam: setCam };
 })();

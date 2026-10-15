@@ -126,13 +126,23 @@
     { id: 'tsq', name: 'Regla T' },
     { id: 't3060', name: 'Escuadra 30°-60°' },
     { id: 't45', name: 'Escuadra 45°' },
-    { id: 'ruler', name: 'Escalímetro' }
+    { id: 'ruler', name: 'Escalímetro' },
+    { id: 'regla', name: 'Regla' }
   ];
+  // tamaños que se venden (pulgadas): en las escuadras es el cateto largo; en reglas, el largo
+  var SIZES = {
+    t3060: [4, 6, 8, 10, 12, 14, 16], t45: [4, 6, 8, 10, 12, 14],
+    ruler: [6, 12], regla: [6, 12, 18, 24], tsq: [12, 18, 24, 30, 36]
+  };
+  var DEF_SIZE = { t3060: 10, t45: 8, ruler: 12, regla: 12 };
+  var REGLA_W = 1.0;
+  function sizeOf(inst) { return inst.size > 0 ? inst.size : DEF_SIZE[inst.kind] || 10; }
 
-  function localShape(kind) {
-    if (kind === 't3060') return { outer: [[0, 0], [T3060.a, 0], [0, T3060.b]], tri: T3060 };
-    if (kind === 't45') return { outer: [[0, 0], [T45.a, 0], [0, T45.b]], tri: T45 };
-    if (kind === 'ruler') return { outer: [[0, 0], [RULER.len, 0], [RULER.len, RULER.w], [0, RULER.w]] };
+  function localShape(kind, size) {
+    if (kind === 't3060') { var tri = { a: size * Math.tan(30 * D2R), b: size }; return { outer: [[0, 0], [tri.a, 0], [0, tri.b]], tri: tri }; }
+    if (kind === 't45') { var t2 = { a: size, b: size }; return { outer: [[0, 0], [t2.a, 0], [0, t2.b]], tri: t2 }; }
+    if (kind === 'ruler') return { outer: [[0, 0], [size, 0], [size, RULER.w], [0, RULER.w]] };
+    if (kind === 'regla') return { outer: [[0, 0], [size, 0], [size, REGLA_W], [0, REGLA_W]] };
     return null;
   }
 
@@ -151,7 +161,7 @@
   /** Polígonos en el mundo: outer, hole (el hueco del triángulo) y cantos de trabajo [{a,b}]. */
   function instGeom(inst, u, rect) {
     if (inst.kind === 'tsq') {
-      var x0 = rect.x0 - TSQ.extra * u, x1 = rect.x1;
+      var x0 = rect.x0 - TSQ.extra * u, x1 = inst.size > 0 ? x0 + inst.size * u : rect.x1;
       var y = inst.y, h = TSQ.h * u;
       return {
         outer: [[x0, y - h], [x1, y - h], [x1, y], [x0, y]],
@@ -160,7 +170,7 @@
         handle: null
       };
     }
-    var sh = localShape(inst.kind);
+    var sh = localShape(inst.kind, sizeOf(inst));
     var tw = function (q) { return toWorld(inst, u, q); };
     var g = { outer: sh.outer.map(tw), hole: null, edges: [], handle: null };
     if (sh.tri) {
@@ -175,8 +185,9 @@
       g.edges = [{ a: g.outer[0], b: g.outer[1] }, { a: g.outer[1], b: g.outer[2] }, { a: g.outer[2], b: g.outer[0] }];
       g.handle = tw([A * 0.22, B * 0.62]);
     } else {
-      g.edges = [{ a: g.outer[0], b: g.outer[1] }];        // escalímetro: se mide por el canto de abajo
-      g.handle = tw([RULER.len - 0.55, RULER.w * 0.55]);
+      var len = sizeOf(inst), wd = inst.kind === 'regla' ? REGLA_W : RULER.w;
+      g.edges = [{ a: g.outer[0], b: g.outer[1] }];        // reglas: se mide y se traza por el canto de abajo
+      g.handle = tw([len - 0.55, wd * 0.55]);
     }
     return g;
   }
@@ -223,8 +234,8 @@
   /* ------------------------------------------------------------------ */
   /** Marcas a lo largo de una cara de RULER.len pulgadas de papel. x y h en pulgadas de papel.
    *  metric: escala métrica (k = 1/n) con marcas en metros reales. */
-  function rulerTicks(k, metric) {
-    var ticks = [], L = RULER.len;
+  function rulerTicks(k, metric, len) {
+    var ticks = [], L = len || RULER.len;
     if (metric) {
       var pin = IN / k;                                   // metros reales por pulgada de papel
       var steps = [0.01, 0.05, 0.1, 0.5, 1, 5, 10];
@@ -272,6 +283,19 @@
     return { ticks: ticks, title: fracLabel(k * 12), zero: zero };
   }
 
+  /** Regla común: pulgadas con 1/16 o centímetros con milímetros, medidas del papel. */
+  function plainTicks(len, metric) {
+    var ticks = [], z = 0.15, L = len;
+    if (metric) {
+      var mmIn = 1 / 25.4, n = Math.floor((L - 0.3) / mmIn);
+      for (var i = 0; i <= n; i++) ticks.push({ x: z + i * mmIn, h: i % 10 === 0 ? 0.32 : i % 5 === 0 ? 0.22 : 0.12, label: i % 10 === 0 ? String(i / 10) : null });
+      return { ticks: ticks, title: 'cm', zero: z };
+    }
+    var c = Math.floor((L - 0.3) * 16);
+    for (var q = 0; q <= c; q++) ticks.push({ x: z + q / 16, h: q % 16 === 0 ? 0.36 : q % 8 === 0 ? 0.26 : q % 4 === 0 ? 0.2 : q % 2 === 0 ? 0.15 : 0.1, label: q % 16 === 0 ? String(q / 16) : null });
+    return { ticks: ticks, title: 'pulgadas', zero: z };
+  }
+
   function fmtNum(v) { return String(Math.round(v * 1000) / 1000); }
   function fracLabel(inPerFt) {
     for (var i = 0; i < ARCH.length; i++) if (Math.abs(ARCH[i][1] - inPerFt) < 1e-9) return ARCH[i][0];
@@ -285,7 +309,8 @@
       tsq: { kind: 'tsq', on: false, y: y },
       t3060: { kind: 't3060', on: false, p: [-w / 2 + w * 0.32, y], ang: 0, flip: false },
       t45: { kind: 't45', on: false, p: [-w / 2 + w * 0.62, y], ang: 0, flip: true },
-      ruler: { kind: 'ruler', on: false, p: [-w / 2 + 1.5, h / 2 - 3], ang: 0, flip: false }
+      ruler: { kind: 'ruler', on: false, p: [-w / 2 + 1.5, h / 2 - 3], ang: 0, flip: false, size: 12, face: '' },
+      regla: { kind: 'regla', on: false, p: [-w / 2 + 1.5, h / 2 - 5], ang: 0, flip: false, size: 12 }
     };
   }
 
@@ -439,7 +464,7 @@
     scaleById: scaleById, unitOf: unitOf, sheetSize: sheetSize, sheetRect: sheetRect, sheetLayout: sheetLayout,
     isoSnap: isoSnap, isoDirs: isoDirs, constrainDir: constrainDir,
     toWorld: toWorld, toLocal: toLocal, instGeom: instGeom, pointInPoly: pointInPoly, closestOnSeg: closestOnSeg,
-    snapToEdges: snapToEdges, edgeDirs: edgeDirs, rulerTicks: rulerTicks, defaultInstruments: defaultInstruments,
+    snapToEdges: snapToEdges, edgeDirs: edgeDirs, rulerTicks: rulerTicks, plainTicks: plainTicks, SIZES: SIZES, DEF_SIZE: DEF_SIZE, sizeOf: sizeOf, REGLA_W: REGLA_W, defaultInstruments: defaultInstruments,
     LEADS: LEADS, PENS: PENS, leadById: leadById, penById: penById, CLASS_LIST: CLASS_LIST, drawArea: drawArea, buildClass: buildClass
   };
 
