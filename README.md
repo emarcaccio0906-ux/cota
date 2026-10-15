@@ -36,10 +36,24 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 - **Proyectos**: varios planos guardados en el navegador con miniatura; duplicar, abrir y borrar
 - **Plan gratis**: 3 proyectos y 2 pisos. Hay "modo de pruebas" para quitar los límites mientras se prueba. Cuentas y nube necesitan un backend y todavía no existen
 
+## Modo clase: dibujo técnico como en papel
+
+- Dos formas de trabajar arriba: **Clase** (hoja de papel para las tareas) y **Libre** (diseño de interiores, muebles y 3D)
+- Hojas 18×24 (Arch C), 11×17, 24×36 y carta, horizontal o vertical, con marco y cajetín (proyecto, nombre, curso, fecha, escala, lámina)
+- Escalas del escalímetro de arquitecto: 3/32", 1/8", 3/16", 1/4", 3/8", 1/2", 3/4", 1", 1 1/2", 3" = 1'-0" y tamaño real; en métrico 1:1 a 1:500
+- Cuadrícula medida en el papel (1/16", 1/8", 1/4", 1/2", 1", 1/10") o en la obra (1", 6", 1', 16"...), cuadrada o isométrica a 30°, con snap por cuadro, medio o cuarto
+- Minas 4H, 2H, H, F, HB, B y 2B con su grosor y tono, y el alfabeto de líneas: visible, contorno, oculta, eje, cota, construcción, corte y proyección
+- Escuadras que se mueven sobre la hoja: regla T, 30°-60°, 45° y escalímetro con sus marcas. El lápiz se pega al canto y sigue su ángulo; se giran de 15° en 15° o se voltean
+- Cada línea dice cuánto mide real y cuánto en el papel (12'-0" · 3" en papel)
+- Texto en letra de plano (3/32" a 1/2")
+- Plantillas de clase: hoja en blanco, alfabeto de líneas, planta, elevación frontal, vistas ortogonales e isométrico
+- PNG de la hoja e Imprimir a escala (imprime al 100%)
+
 ## Probar
 
     node tests/test.js      # 77 pruebas de unidades, geometría y modelo 3D
     node tests/test2.js     # 28 pruebas de muebles, cuartos, escaleras y plantillas
+    node tests/test3.js     # 12 pruebas de escalas, hojas, isométrico, escuadras y plantillas de clase
     python3 -m http.server  # y abre http://localhost:8000
 
 ## Publicar como sitio aparte

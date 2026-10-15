@@ -21,6 +21,11 @@
       <button id="m-3d" class="seg-btn" aria-pressed="false">3D</button>
     </div>
 
+    <div class="seg ws-seg" role="group" aria-label="Forma de trabajo">
+      <button id="ws-clase" class="seg-btn" aria-pressed="false" title="Clase: hoja de papel, escala, minas y escuadras"><span class="long">Clase</span><span class="short">Clase</span></button>
+      <button id="ws-libre" class="seg-btn" aria-pressed="true" title="Libre: diseño de interiores, muebles y 3D"><span class="long">Libre</span><span class="short">Libre</span></button>
+    </div>
+
     <div class="group">
       <button class="icon-btn" id="btn-undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"></button>
       <button class="icon-btn" id="btn-redo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer"></button>
@@ -67,6 +72,8 @@
 
     <div class="float bottom-left" id="levelbar" aria-label="Pisos"></div>
 
+    <div class="float mid-right" id="draftbar" aria-label="Escuadras" hidden></div>
+
     <div class="float top-right" id="selbar" hidden>
       <span id="sel-count" class="sel-count"></span>
       <button class="chip-btn" id="act-dup">Duplicar</button>
@@ -102,7 +109,11 @@
       </div>
       <ul id="layers" class="layers"></ul>
     </section>
-    <section class="only-2d">
+    <section class="only-2d only-clase">
+      <div class="panel-head"><h2>Hoja, escala y medidas</h2></div>
+      <div id="papercfg" class="props"></div>
+    </section>
+    <section class="only-2d only-libre">
       <div class="panel-head"><h2>Cuadrícula y medidas</h2></div>
       <div id="gridcfg" class="props"></div>
     </section>
@@ -116,7 +127,7 @@
         <dt>V</dt><dd>Seleccionar</dd>
         <dt>L · P · R · C</dt><dd>Línea · Polilínea · Rectángulo · Círculo</dd>
         <dt>W · D · N · M</dt><dd>Pared · Puerta · Ventana · Cota</dd>
-        <dt>Q · U</dt><dd>Cuarto (nombre y área) · Mueble</dd>
+        <dt>Q · U · T</dt><dd>Cuarto (nombre y área) · Mueble · Texto</dd>
         <dt>R</dt><dd>Girar el mueble antes de ponerlo</dd>
         <dt>Shift</dt><dd>Ortogonal mientras lo mantienes</dd>
         <dt>Enter · Esc</dt><dd>Terminar · Cancelar</dd>
@@ -155,7 +166,12 @@
 <dialog id="dlg-new" class="wide">
   <div class="dlg-body">
     <h3>Proyecto nuevo</h3>
-    <p>Empieza con una plantilla o en blanco. Tu proyecto actual se queda guardado en Proyectos.</p>
+    <p>Elige cómo vas a trabajar. Tu proyecto actual se queda guardado en Proyectos.</p>
+    <h4 class="tpl-h">Clase · dibujo técnico en papel</h4>
+    <p class="tpl-p">Hoja con cajetín, escala de escalímetro, minas (2H, HB...) y escuadras. Para practicar las tareas antes de hacerlas a mano.</p>
+    <div id="tpl-grid-clase" class="tpl-grid"></div>
+    <h4 class="tpl-h">Libre · diseño de interiores y 3D</h4>
+    <p class="tpl-p">Sin hoja: paredes, muebles, varios pisos y recorrido en 3D.</p>
     <div id="tpl-grid" class="tpl-grid"></div>
     <div class="dlg-actions"><button class="pill ghost" id="tpl-cancel" type="button">Cancelar</button></div>
   </div>
@@ -203,6 +219,7 @@
 <script src="js/units.js"></script>
 <script src="js/furniture.js"></script>
 <script src="js/geom.js"></script>
+<script src="js/drafting.js"></script>
 <script src="js/templates.js"></script>
 <script src="js/model3d.js"></script>
 <script src="js/view3d.js"></script>
