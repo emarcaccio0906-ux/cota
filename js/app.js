@@ -528,7 +528,7 @@
         if (p.pen && D.penById(p.pen.type) && D.leadById(p.pen.lead)) pen = { type: p.pen.type, lead: p.pen.lead };
         if (isNum(p.textIn) && p.textIn > 0.03 && p.textIn < 1) textIn = p.textIn;
         if (p.uiLevel === 'avanzado') uiLevel = 'avanzado';
-        if (p.profile && typeof p.profile === 'object') ['name', 'course', 'school'].forEach(function (k) { if (typeof p.profile[k] === 'string') profile[k] = p.profile[k].slice(0, 60); });
+        if (p.profile && typeof p.profile === 'object' && !user) ['name', 'course', 'school'].forEach(function (k) { if (typeof p.profile[k] === 'string') profile[k] = p.profile[k].slice(0, 60); });
         if (p.skipHome === true) skipHome = true;
         return true;
       }
@@ -3133,8 +3133,8 @@
     var hi = new Date().getHours(), saludo = hi < 12 ? 'Buenos días' : hi < 19 ? 'Buenas tardes' : 'Buenas noches';
     var cur = projectById(curId);
     h.appendChild(el('div', { class: 'home-head' }, [
-      el('div', null, [el('h1', { text: saludo + (profile.name ? ', ' + profile.name.split(' ')[0] : '') }), el('p', { class: 'muted', text: profile.course ? profile.course : 'Planos para clase y diseño de interiores.' })]),
-      el('div', { class: 'home-head-btns' }, [btn('Mi cuenta', showAccount), cur ? btn('Seguir con "' + cur.name + '" →', function () { hideHome(); }, 'primary') : null])
+      el('div', null, [el('h1', { text: saludo + (profile.name ? ', ' + profile.name : '') }), el('p', { class: 'muted', text: profile.course ? profile.course : 'Planos para clase y diseño de interiores.' })]),
+      el('div', { class: 'home-head-btns' }, [btn('Mi cuenta', showAccount), btn('Cambiar de cuenta', signOut), cur ? btn('Seguir con "' + cur.name + '" →', function () { hideHome(); }, 'primary') : null])
     ]));
     function card(title, desc, icon, fn) {
       var b = el('button', { class: 'start-card', type: 'button' }, [el('span', { class: 'sc-ico' }, [icon]), el('b', { text: title }), el('span', { text: desc })]);
@@ -3195,9 +3195,23 @@
     b.appendChild(el('p', { class: 'muted', text: 'Tu cuenta vive en este navegador: tus proyectos, tu nombre y tu historial se guardan aquí. La cuenta en la nube (para verla en otro equipo) viene después; mientras tanto, descarga un respaldo y ábrelo donde quieras.' }));
     [['name', 'Nombre', 'Tu nombre (sale en el cajetín)'], ['course', 'Curso', 'Ej. Dibujo arquitectónico I'], ['school', 'Escuela', 'Tu universidad o college']].forEach(function (f) {
       var inp = el('input', { type: 'text', value: profile[f[0]] || '', maxlength: '60', placeholder: f[2], 'aria-label': f[1] });
-      inp.addEventListener('change', function () { profile[f[0]] = inp.value.trim(); savePrefs(); requestRender(); if (!$('home').hidden) renderHome(); });
+      inp.addEventListener('change', function () {
+        var v = inp.value.trim().replace(/\s+/g, ' ');
+        if (f[0] === 'name' && v.length < 2) { inp.value = profile.name; toast('Tu cuenta necesita un nombre.'); return; }
+        profile[f[0]] = v; saveUsers(); savePrefs(); requestRender(); if (!$('home').hidden) renderHome();
+      });
       b.appendChild(propRow(f[1], inp));
     });
+    if (user) {
+      var pinBtn = btn(user.pin ? 'Cambiar PIN' : 'Ponerle PIN', function () {
+        ask(user.pin ? 'PIN nuevo' : 'Ponle un PIN', 'De 4 a 12 números. Déjalo vacío para quitarlo.', { input: true, ok: 'Guardar' }).then(function (v) {
+          if (v === null) return;
+          if (v && !/^\d{4,12}$/.test(v)) { toast('El PIN son de 4 a 12 números.'); return; }
+          (v ? hashPin(v, user.salt) : Promise.resolve('')).then(function (h) { user.pin = h; saveUsers(); toast(h ? 'PIN guardado.' : 'PIN quitado.'); showAccount(); });
+        });
+      });
+      b.appendChild(propRow('Sesión', el('div', { class: 'btn-row tight' }, [pinBtn, btn('Cerrar sesión', signOut)])));
+    }
     var nc = projects.filter(function (e) { return e.ws === 'clase'; }).length;
     var first = projects.reduce(function (m, e) { return Math.min(m, e.created || e.updated); }, Date.now());
     b.appendChild(el('div', { class: 'acc-stats' }, [
@@ -3234,7 +3248,7 @@
         var e = projectById(id); if (e && isNum(x.p.created)) e.created = x.p.created;
       });
       saveIndex();
-      if (data.profile && !profile.name) ['name', 'course', 'school'].forEach(function (k) { if (typeof data.profile[k] === 'string') profile[k] = data.profile[k].slice(0, 60); });
+      if (data.profile && !profile.course) ['course', 'school'].forEach(function (k) { if (typeof data.profile[k] === 'string') profile[k] = data.profile[k].slice(0, 60); });
       savePrefs();
       logEvent('respaldo', ok.length + ' proyectos', '');
       toast('Listo: ' + ok.length + ' proyectos restaurados.');
@@ -3598,8 +3612,131 @@
   /* ------------------------------------------------------------------ */
   /* Arranque                                                            */
   /* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
+  /* Cuentas en este navegador: iniciar sesión con nombre y PIN           */
+  /* ------------------------------------------------------------------ */
+  var STORE_USERS = 'cota:users:v1', STORE_SESSION = 'cota:session:v1';
+  var users = [], user = null;
+  function loadUsers() {
+    try { var a = JSON.parse(localStorage.getItem(STORE_USERS) || '[]'); users = Array.isArray(a) ? a.filter(function (u) { return u && typeof u.id === 'string' && /^[a-z0-9]{4,30}$/.test(u.id) && typeof u.name === 'string'; }) : []; }
+    catch (e) { users = []; }
+  }
+  function saveUsers() { try { localStorage.setItem(STORE_USERS, JSON.stringify(users)); } catch (e) { /* nada */ } }
+  /** Cada cuenta guarda sus proyectos, ajustes e historial aparte. */
+  function setUserKeys(id) {
+    var b = 'cota:u:' + id + ':';
+    STORE_DOC = b + 'doc'; STORE_PREFS = b + 'prefs'; STORE_INDEX = b + 'projects'; STORE_PROJECT = b + 'p:'; STORE_LOG = b + 'log';
+  }
+  /** La primera cuenta se queda con lo que ya estaba guardado de antes de las cuentas. */
+  function adoptLegacy(id) {
+    var b = 'cota:u:' + id + ':', moves = [['cota:prefs:v1', b + 'prefs'], ['cota:projects:v1', b + 'projects'], ['cota:log:v1', b + 'log'], ['cota:doc:v1', b + 'doc']];
+    try {
+      for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('cota:p:') === 0) moves.push([k, b + 'p:' + k.slice(7)]); }
+      moves.forEach(function (m) { var v = localStorage.getItem(m[0]); if (v != null) { localStorage.setItem(m[1], v); localStorage.removeItem(m[0]); } });
+    } catch (e) { /* nada */ }
+  }
+  function initials(n) { return n.trim().split(/\s+/).slice(0, 2).map(function (w) { return w[0] || ''; }).join('').toUpperCase() || '?'; }
+  function hashPin(pin, salt) {
+    var data = new TextEncoder().encode(salt + ':' + pin);
+    if (window.crypto && crypto.subtle) return crypto.subtle.digest('SHA-256', data).then(function (buf) { return Array.from(new Uint8Array(buf)).map(function (x) { return x.toString(16).padStart(2, '0'); }).join(''); });
+    var h = 0; for (var i = 0; i < data.length; i++) h = (h * 31 + data[i]) | 0;      // sin crypto (http): algo es algo
+    return Promise.resolve('x' + (h >>> 0).toString(16));
+  }
+  function signIn(u) {
+    user = u; u.last = Date.now(); saveUsers();
+    try { localStorage.setItem(STORE_SESSION, u.id); } catch (e) { /* nada */ }
+    setUserKeys(u.id);
+    profile = u;                                  // nombre, curso y escuela viven en la cuenta
+    $('login').hidden = true;
+    startApp();
+  }
+  function signOut() {
+    saveNow();
+    try { localStorage.removeItem(STORE_SESSION); } catch (e) { /* nada */ }
+    location.reload();
+  }
+  function showLogin() {
+    var L = $('login-body');
+    L.textContent = '';
+    $('login').hidden = false;
+    L.appendChild(el('div', { class: 'login-brand' }, [el('h1', { text: 'Cota' }), el('p', { class: 'muted', text: 'Planos para clase y diseño de interiores' })]));
+    if (users.length) {
+      L.appendChild(el('h2', { text: 'Iniciar sesión' }));
+      var list = el('div', { class: 'user-list' });
+      users.slice().sort(function (a, b) { return (b.last || 0) - (a.last || 0); }).forEach(function (u) {
+        var b = el('button', { type: 'button', class: 'user-btn' }, [el('span', { class: 'avatar', text: initials(u.name) }), el('span', null, [el('b', { text: u.name }), el('span', { class: 'muted small', text: u.pin ? 'Con PIN' : 'Sin PIN' })])]);
+        b.addEventListener('click', function () { if (u.pin) askPin(u); else signIn(u); });
+        list.appendChild(b);
+      });
+      L.appendChild(list);
+      var nb = el('button', { type: 'button', class: 'chip-btn', text: '+ Crear otra cuenta' });
+      nb.addEventListener('click', function () { showSignUp(); });
+      L.appendChild(nb);
+    } else showSignUp(true);
+    L.appendChild(el('p', { class: 'muted small login-note', text: 'Las cuentas se guardan en este navegador. El PIN evita que otra persona abra tus proyectos aquí, pero no es una contraseña de internet. La cuenta en la nube viene después.' }));
+  }
+  function askPin(u) {
+    var L = $('login-body');
+    L.textContent = '';
+    L.appendChild(el('div', { class: 'login-brand' }, [el('span', { class: 'avatar big', text: initials(u.name) }), el('h2', { text: u.name })]));
+    var pin = el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'current-password', maxlength: '12', placeholder: 'Tu PIN', 'aria-label': 'PIN' });
+    var msg = el('p', { class: 'login-err', role: 'alert' });
+    var go = el('button', { type: 'submit', class: 'pill', text: 'Entrar' });
+    var back = el('button', { type: 'button', class: 'pill ghost', text: 'Volver' });
+    back.addEventListener('click', showLogin);
+    var form = el('form', { class: 'login-form' }, [pin, msg, el('div', { class: 'dlg-actions' }, [back, go])]);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      hashPin(pin.value, u.salt).then(function (h) {
+        if (h === u.pin) signIn(u);
+        else { msg.textContent = 'PIN incorrecto.'; pin.value = ''; pin.focus(); }
+      });
+    });
+    L.appendChild(form);
+    pin.focus();
+  }
+  function showSignUp(first) {
+    var L = $('login-body');
+    L.textContent = '';
+    L.appendChild(el('div', { class: 'login-brand' }, [el('h1', { text: 'Cota' }), el('p', { class: 'muted', text: first ? 'Crea tu cuenta para empezar.' : 'Cuenta nueva' })]));
+    var name = el('input', { type: 'text', maxlength: '60', placeholder: 'Nombre y apellido', autocomplete: 'name', 'aria-label': 'Nombre y apellido', required: 'required' });
+    var course = el('input', { type: 'text', maxlength: '60', placeholder: 'Curso (opcional)', 'aria-label': 'Curso' });
+    var school = el('input', { type: 'text', maxlength: '60', placeholder: 'Escuela (opcional)', 'aria-label': 'Escuela' });
+    var pin = el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'new-password', maxlength: '12', placeholder: 'PIN de 4 a 12 números (opcional)', 'aria-label': 'PIN' });
+    var msg = el('p', { class: 'login-err', role: 'alert' });
+    var acts = [el('button', { type: 'submit', class: 'pill', text: 'Crear cuenta' })];
+    if (users.length) { var back = el('button', { type: 'button', class: 'pill ghost', text: 'Volver' }); back.addEventListener('click', showLogin); acts.unshift(back); }
+    var form = el('form', { class: 'login-form' }, [name, course, school, pin, msg, el('div', { class: 'dlg-actions' }, acts)]);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var n = name.value.trim().replace(/\s+/g, ' ');
+      if (n.length < 2) { msg.textContent = 'Escribe tu nombre.'; return; }
+      if (pin.value && !/^\d{4,12}$/.test(pin.value)) { msg.textContent = 'El PIN son de 4 a 12 números.'; return; }
+      var id = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), salt = Math.random().toString(36).slice(2, 12);
+      var u = { id: id, name: n, course: course.value.trim(), school: school.value.trim(), created: Date.now(), last: Date.now(), salt: salt, pin: '' };
+      var firstEver = !users.length;
+      (pin.value ? hashPin(pin.value, salt) : Promise.resolve('')).then(function (h) {
+        u.pin = h;
+        if (firstEver) adoptLegacy(id);
+        users.push(u); saveUsers();
+        signIn(u);
+      });
+    });
+    L.appendChild(form);
+    name.focus();
+  }
   function boot() {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.setAttribute('data-theme', 'light');
+    loadUsers();
+    var sid = null;
+    try { sid = localStorage.getItem(STORE_SESSION); } catch (e) { sid = null; }
+    var u = users.filter(function (x) { return x.id === sid; })[0];
+    if (u) signIn(u); else showLogin();
+  }
+
+  function startApp() {
     var hadPrefs = loadPrefs();
+    if (user) profile = user;
     if (!hadPrefs && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) theme = 'light';
     document.documentElement.setAttribute('data-theme', theme);
     readColors();
