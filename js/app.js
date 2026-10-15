@@ -51,6 +51,12 @@
   var profile = { name: '', course: '', school: '' };
   var GRID_COLORS = { azul: [70, 140, 215], gris: [95, 105, 120], verde: [45, 150, 95], sepia: [165, 120, 70], rojo: [210, 80, 70] };
   var GRID_STRENGTH = { suave: [0.09, 0.2], media: [0.17, 0.36], fuerte: [0.3, 0.6] };
+  // hoja oscura para trabajar de noche (al imprimir o exportar siempre sale clara)
+  var PAPER_DARK = {
+    canvas: '#1d242e', 'grid-minor': 'rgba(110, 170, 235, 0.16)', 'grid-major': 'rgba(110, 170, 235, 0.32)', 'axis-x': 'rgba(255, 110, 110, 0.5)', 'axis-y': 'rgba(110, 220, 140, 0.5)',
+    ink: '#e6eaf0', sel: '#4cc3ff', accent: '#ff7a2e', panel: '#141d2b', text: '#dde5f0', muted: '#93a2b8', line: '#2c3a50'
+  };
+  var nightPaper = false;
   var PAPER_COLORS = {
     canvas: '#fbfaf6', 'grid-minor': 'rgba(70, 140, 215, 0.17)', 'grid-major': 'rgba(70, 140, 215, 0.36)', 'axis-x': 'rgba(200, 50, 50, 0.5)', 'axis-y': 'rgba(30, 140, 70, 0.5)',
     ink: '#2a2e35', sel: '#0a7cc2', accent: '#d9480f', panel: '#ffffff', text: '#1b2536', muted: '#5d6b80', line: '#d3dae4'
@@ -262,7 +268,9 @@
     var def = { wall: 'B', door: 'H', window: 'H', dim: '2H', furn: 'H', text: 'F', room: 'F' }[o.type] || 'HB';
     return D.leadById(def);
   }
-  function leadColor(ld) { return 'rgba(36, 40, 48, ' + ld.dark + ')'; }
+  function paperDark() { return nightPaper && !exporting; }
+  function leadColor(ld) { return paperDark() ? 'rgba(232, 236, 242, ' + Math.min(1, 0.12 + ld.dark * 0.88) + ')' : 'rgba(36, 40, 48, ' + ld.dark + ')'; }
+  function toggleNight(v) { nightPaper = typeof v === 'boolean' ? v : !nightPaper; savePrefs(); uiSync(); requestRender(); }
   function leadPx(ld) { return Math.max(0.6, ld.mm / 25.4 * paperPx()); }
   function penDash(o) {
     var pn = o.pen ? D.penById(o.pen) : null;
@@ -489,7 +497,7 @@
       localStorage.setItem(STORE_PREFS, JSON.stringify({
         units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc,
         precision: precision, s3: s3, cur: curId, pro: pro, areas: showAreas, furn: { kind: furnKind, align: furnAlign },
-        insts: insts, instOpen: instOpen, pen: pen, textIn: textIn, uiLevel: uiLevel, profile: profile, skipHome: skipHome
+        insts: insts, instOpen: instOpen, pen: pen, textIn: textIn, uiLevel: uiLevel, profile: profile, skipHome: skipHome, nightPaper: nightPaper
       }));
     } catch (e) { /* nada */ }
   }
@@ -530,6 +538,7 @@
         if (p.uiLevel === 'avanzado') uiLevel = 'avanzado';
         if (p.profile && typeof p.profile === 'object' && !user) ['name', 'course', 'school'].forEach(function (k) { if (typeof p.profile[k] === 'string') profile[k] = p.profile[k].slice(0, 60); });
         if (p.skipHome === true) skipHome = true;
+        if (p.nightPaper === true) nightPaper = true;
         return true;
       }
     } catch (e) { /* nada */ }
@@ -565,9 +574,9 @@
   function render(clean) {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     var paper = clase(), themeColors = colors;
-    ctx.fillStyle = paper ? (theme === 'dark' ? '#070c13' : '#cfd6df') : colors.canvas;
+    ctx.fillStyle = paper ? (theme === 'dark' || paperDark() ? '#070c13' : '#cfd6df') : colors.canvas;
     ctx.fillRect(0, 0, W, H);
-    if (paper) { drawSheet(); colors = PAPER_COLORS; }
+    if (paper) { drawSheet(); colors = paperDark() ? PAPER_DARK : PAPER_COLORS; }
     try { renderBody(clean, paper); } finally { colors = themeColors; }
   }
   function renderBody(clean, paper) {
@@ -635,6 +644,7 @@
     var q = doc.paper, sp = gridSpec();
     if (sp.type === 'none') return;
     var rgb = GRID_COLORS[q.gridColor] || GRID_COLORS.azul, al = GRID_STRENGTH[q.gridStrength] || GRID_STRENGTH.media;
+    if (paperDark()) { rgb = rgb.map(function (c) { return Math.round(c + (255 - c) * 0.35); }); al = [al[0] * 0.9, al[1] * 0.85]; }
     var mj = q.major > 0 ? q.major : 0, dots = q.gridStyle === 'dots', kd = dots ? 2.4 : 1;
     var colMinor = 'rgba(' + rgb.join(',') + ',' + Math.min(1, al[0] * kd) + ')', colMajor = 'rgba(' + rgb.join(',') + ',' + Math.min(1, al[1] * kd) + ')';
     var A = s2w(0, H), B = s2w(W, 0), ox = sp.off[0], oy = sp.off[1];
@@ -687,7 +697,7 @@
     var r = rectS(sheetLay().sheet);
     ctx.save();
     if (!exporting) { ctx.shadowColor = 'rgba(0, 0, 0, 0.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4; }
-    ctx.fillStyle = PAPER_COLORS.canvas;
+    ctx.fillStyle = (paperDark() ? PAPER_DARK : PAPER_COLORS).canvas;
     ctx.fillRect(r[0], r[1], r[2], r[3]);
     ctx.restore();
   }
@@ -2129,7 +2139,7 @@
   function leadSwatch(o) {
     var c = el('canvas', { width: '120', height: '20', class: 'swatch', 'aria-hidden': 'true' });
     var g = c.getContext('2d'), ld = D.leadById(o.lead), pn = D.penById(o.type || o.pen);
-    g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, 120, 20);
+    g.fillStyle = paperDark() ? PAPER_DARK.canvas : '#fbfaf6'; g.fillRect(0, 0, 120, 20);
     g.strokeStyle = leadColor(ld); g.lineWidth = Math.max(1, ld.mm * 3.2);
     if (pn && pn.dash) g.setLineDash(pn.dash.map(function (x) { return x * 48; }));
     g.beginPath(); g.moveTo(6, 10); g.lineTo(114, 10); g.stroke();
@@ -2221,6 +2231,7 @@
     var sheetReal = D.sheetSize(q);
     box.appendChild(el('div', { class: 'hint', text: (sc.use ? sc.use + '. ' : '') + 'La hoja entera mide ' + fmt(sheetReal.w * paperU()) + ' × ' + fmt(sheetReal.h * paperU()) + ' reales.' }));
 
+    box.appendChild(propRow('Hoja oscura', checkRow(nightPaper, function (v) { toggleNight(v); }, 'Hoja oscura para trabajar de noche')));
     head('Cuadrícula');
     box.appendChild(el('div', { class: 'grid-pick' }, GRID_TYPES.map(function (g) {
       var b = el('button', { type: 'button', class: 'grid-opt', 'aria-pressed': String(q.gridType === g[1]), title: g[2] }, [gridIcon(g[1]), el('span', { text: g[0] })]);
@@ -2378,6 +2389,9 @@
     var head = el('button', { class: 'chip-btn db-head', type: 'button', 'aria-expanded': String(instOpen), text: instOpen ? 'Escuadras ▾' : 'Escuadras ▸' });
     head.addEventListener('click', function () { instOpen = !instOpen; savePrefs(); renderDraftBar(); });
     bar.appendChild(head);
+    var nt = el('button', { class: 'chip-btn db-btn small', type: 'button', 'aria-pressed': String(nightPaper), text: nightPaper ? '☾ Hoja oscura' : '☀ Hoja clara', title: 'Oscurecer la hoja para trabajar de noche (N)' });
+    nt.addEventListener('click', function () { toggleNight(); });
+    bar.appendChild(nt);
     if (!instOpen) return;
     var names = { tsq: 'Regla T', t3060: '30°-60°', t45: '45°', ruler: 'Escalímetro' };
     INST_ORDER.forEach(function (id) {
