@@ -3448,7 +3448,8 @@
   $('tog-ortho').addEventListener('click', toggleOrtho);
   $('u-ft').addEventListener('click', function () { setUnits('ft'); });
   $('u-m').addEventListener('click', function () { setUnits('m'); });
-  $('btn-theme').addEventListener('click', function () { applyTheme(theme === 'dark' ? 'light' : 'dark'); });
+  // el botón de tema oscurece todo, también la hoja; el botón Hoja oscura/clara la cambia por separado
+  $('btn-theme').addEventListener('click', function () { var t = theme === 'dark' ? 'light' : 'dark'; nightPaper = t === 'dark'; applyTheme(t); uiSync(); requestRender(); });
   $('btn-panel').addEventListener('click', function () { $('app').classList.toggle('panel-open'); });
   $('stage').addEventListener('pointerdown', function () { $('app').classList.remove('panel-open'); });
 
