@@ -55,6 +55,7 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 - Cada línea dice cuánto mide real y cuánto en el papel (12'-0" · 3" en papel)
 - Texto en letra de plano (3/32" a 1/2")
 - Plantillas de clase: hoja en blanco, alfabeto de líneas, planta, elevación frontal, vistas ortogonales e isométrico
+- Hoja oscura para trabajar de noche (botón en Escuadras o en el panel); al imprimir o guardar PNG la hoja sale clara
 - PNG de la hoja e Imprimir a escala (imprime al 100%)
 
 ## Probar
