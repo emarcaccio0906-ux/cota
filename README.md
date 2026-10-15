@@ -18,26 +18,27 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 - Deshacer/rehacer, autoguardado en el navegador, guardar/abrir `.json`, exportar PNG
 - Tema oscuro y claro
 
+## Vista 3D (fase 3)
+
+- Un clic en **3D** y el plano se levanta: paredes con dinteles, puertas con hoja abierta, ventanas con marco y vidrio
+- Cámaras: órbita, planta y recorrido a altura de persona (toca el piso para caminar, WASD o flechas)
+- Sol por hora del día con sombras, materiales de pared y piso, techo opcional, corte de paredes a 4' o solo bases
+- Piso y cuartos detectados solos (áreas de espacios cerrados)
+- Exportar la vista 3D como PNG
+- Three.js r128 viene incluido en `vendor/` (MIT), no necesita internet
+
+## Probar
+
+    node tests/test.js      # 77 pruebas de unidades, geometría y modelo 3D
+    python3 -m http.server  # y abre http://localhost:8000
+
+## Publicar como sitio aparte
+
+Es estático, sin build. GitHub Pages (Settings > Pages > main / root; repo público en plan gratis),
+o Netlify / Vercel arrastrando la carpeta (sirven con repo privado).
+
 ## Lo que sigue
 
-Offset, recortar y escalar · bloques de muebles · cuartos con área automática · exportar PDF a escala y DXF ·
-vista 3D (Three.js) · cuentas de usuario y guardado en la nube · plan gratis y plan pago.
-
-## Estructura
-
-```
-index.html        página
-css/styles.css    interfaz y temas
-js/units.js       lectura y formato de medidas (pura, con pruebas)
-js/geom.js        geometría, enganche y colocación de aberturas (pura, con pruebas)
-js/app.js         editor: lienzo, herramientas, capas, archivos
-tests/test.js     pruebas de la lógica pura
-```
-
-## Pruebas
-
-```
-node tests/test.js
-```
-
-Todo el dibujo se guarda en metros con Y hacia arriba. Un plano guardado es un `.json` legible.
+Cuartos con área en 2D · láminas e impresión con cajetín · PDF a escala y DXF · offset, recortar y escalar ·
+biblioteca de muebles · cómputo de materiales · plantillas · compartir por enlace · cuentas y nube ·
+varios pisos, escaleras y techos.

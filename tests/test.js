@@ -3,6 +3,7 @@
 const assert = require('assert');
 const U = require('../js/units.js');
 const G = require('../js/geom.js');
+const M = require('../js/model3d.js');
 
 let passed = 0;
 function test(name, fn) {
@@ -126,6 +127,133 @@ test('geometría de abertura', () => {
 test('cota alineada', () => {
   const d = G.dimGeom({ a: [0, 0], b: [4, 0], off: 1 });
   near(d.length, 4); near(d.a2[1], 1);
+});
+
+console.log('Modelo 3D');
+const mkWall = (id, a, b, t = 0.114) => ({ id, type: 'wall', a, b, t });
+const room = (x0, y0, x1, y1, id0 = 1) => [
+  mkWall(id0, [x0, y0], [x1, y0]), mkWall(id0 + 1, [x1, y0], [x1, y1]),
+  mkWall(id0 + 2, [x1, y1], [x0, y1]), mkWall(id0 + 3, [x0, y1], [x0, y0])
+];
+const H = 2.4384;
+
+test('pared con puerta: muro, dintel y hoja', () => {
+  const objs = [mkWall(1, [0, 0], [10, 0]), { id: 2, type: 'door', wall: 1, pos: 4, w: 1, flip: false }];
+  const m = M.build(objs, {});
+  const walls = m.parts.filter(p => p.kind === 'wall');
+  assert.strictEqual(walls.length, 3);   // dos tramos + dintel
+  const lintel = walls.find(p => p.h0 > 0);
+  near(lintel.h0, 2.032); near(lintel.h1, H); near(lintel.len, 1, 0.01);
+  assert.strictEqual(m.parts.filter(p => p.kind === 'leaf').length, 1);
+  assert.strictEqual(m.stats.doors, 1);
+});
+test('los tramos extremos se alargan medio espesor', () => {
+  const m = M.build([mkWall(1, [0, 0], [10, 0], 0.2)], {});
+  const w = m.parts[0];
+  near(w.len, 10.2); near(w.c[0], 5);
+});
+test('ventana: muro bajo, muro alto, marco y vidrio', () => {
+  const objs = [mkWall(1, [0, 0], [10, 0]), { id: 2, type: 'window', wall: 1, pos: 5, w: 1.5, flip: false }];
+  const m = M.build(objs, {});
+  const walls = m.parts.filter(p => p.kind === 'wall');
+  assert.strictEqual(walls.length, 4);   // dos tramos, antepecho y dintel
+  near(Math.min(...walls.map(p => p.h1).filter(h => h < H)), 0.9144, 0.01);
+  const glass = m.parts.filter(p => p.kind === 'glass');
+  assert.strictEqual(glass.length, 1);
+  near(glass[0].h0, 0.9144 + 0.05); near(glass[0].h1, 0.9144 + 1.2192 - 0.05);
+  assert.ok(m.parts.filter(p => p.kind === 'frame').length >= 5);   // marco + parteluz (ventana ancha)
+});
+test('ventana angosta no lleva parteluz', () => {
+  const m = M.build([mkWall(1, [0, 0], [10, 0]), { id: 2, type: 'window', wall: 1, pos: 5, w: 0.8, flip: false }], {});
+  assert.strictEqual(m.parts.filter(p => p.kind === 'frame').length, 4);
+});
+test('ninguna pieza pasa de la altura de pared', () => {
+  const objs = room(0, 0, 6, 4).concat([{ id: 9, type: 'door', wall: 1, pos: 2, w: 0.9 }, { id: 10, type: 'window', wall: 2, pos: 2, w: 1.2 }]);
+  const m = M.build(objs, { wallH: 2.7 });
+  assert.ok(m.parts.every(p => p.h1 <= 2.7 + 1e-9 && p.h0 >= -1e-9));
+});
+test('pared baja: la abertura se recorta a la altura', () => {
+  const m = M.build([mkWall(1, [0, 0], [10, 0]), { id: 2, type: 'door', wall: 1, pos: 4, w: 1 }], { wallH: 1.8 });
+  assert.ok(m.parts.every(p => p.h1 <= 1.8 + 1e-9));
+  assert.strictEqual(m.parts.filter(p => p.kind === 'wall' && p.h0 > 0).length, 0);   // sin dintel
+});
+test('hoja de puerta abierta 90° va hacia el lado de apertura', () => {
+  const base = { id: 2, type: 'door', wall: 1, pos: 4, w: 1 };
+  const a = M.build([mkWall(1, [0, 0], [10, 0]), Object.assign({ flip: false }, base)], {}).parts.find(p => p.kind === 'leaf');
+  const b = M.build([mkWall(1, [0, 0], [10, 0]), Object.assign({ flip: true }, base)], {}).parts.find(p => p.kind === 'leaf');
+  assert.ok(a.c[1] > 0.3); assert.ok(b.c[1] < -0.3);
+  near(Math.abs(Math.sin(a.ang)), 1);
+});
+test('puerta cerrada queda dentro de la pared', () => {
+  const l = M.build([mkWall(1, [0, 0], [10, 0]), { id: 2, type: 'door', wall: 1, pos: 4, w: 1 }], { doorAngle: 0 }).parts.find(p => p.kind === 'leaf');
+  near(l.c[1], 0); near(l.ang, 0);
+});
+test('abertura de una pared oculta no se cuenta', () => {
+  const m = M.build([{ id: 2, type: 'door', wall: 99, pos: 4, w: 1 }], {});
+  assert.strictEqual(m.stats.doors, 0); assert.strictEqual(m.parts.length, 0); assert.strictEqual(m.bounds, null);
+});
+test('límites del modelo incluyen el espesor', () => {
+  const m = M.build([mkWall(1, [0, 0], [10, 0], 0.2)], {});
+  near(m.bounds.minx, -0.1); near(m.bounds.maxx, 10.1); near(m.bounds.miny, -0.1); near(m.bounds.maxy, 0.1);
+});
+
+test('cuarto cerrado: área interior', () => {
+  const f = M.floorMask(room(0, 0, 6, 4), {});
+  assert.ok(f.ok); assert.strictEqual(f.rooms.length, 1);
+  const expected = (6 - 0.114) * (4 - 0.114);
+  assert.ok(Math.abs(f.rooms[0].area - expected) / expected < 0.03, `${f.rooms[0].area} vs ${expected}`);
+});
+test('cuarto cerrado: la puerta no abre la máscara', () => {
+  const f = M.floorMask(room(0, 0, 6, 4), {});
+  const objs = room(0, 0, 6, 4).concat([{ id: 9, type: 'door', wall: 1, pos: 3, w: 1 }]);
+  const g = M.floorMask(M.build(objs, {}).walls, {});
+  near(g.rooms[0].area, f.rooms[0].area, 1e-6);
+});
+test('cuarto abierto (hueco en una pared): sin interior', () => {
+  const walls = [
+    mkWall(1, [0, 0], [2.5, 0]), mkWall(2, [3.5, 0], [6, 0]),   // hueco de 1 m abajo
+    mkWall(3, [6, 0], [6, 4]), mkWall(4, [6, 4], [0, 4]), mkWall(5, [0, 4], [0, 0])
+  ];
+  const f = M.floorMask(walls, {});
+  assert.strictEqual(f.rooms.length, 0); near(f.enclosedArea, 0);
+});
+test('dos cuartos con tabique', () => {
+  const f = M.floorMask(room(0, 0, 8, 4).concat([mkWall(9, [4, 0], [4, 4])]), {});
+  assert.strictEqual(f.rooms.length, 2);
+  assert.ok(Math.abs(f.rooms[0].area - f.rooms[1].area) < 0.5);
+});
+test('esquinas sin extremos que se tocan quedan cerradas', () => {
+  // paredes que terminan justo en el punto de la esquina, como las dibuja la herramienta
+  const f = M.floorMask(room(0, 0, 5, 5), {});
+  assert.strictEqual(f.rooms.length, 1);
+});
+test('punto de inicio dentro del cuarto más grande', () => {
+  const f = M.floorMask(room(0, 0, 8, 4).concat([mkWall(9, [6, 0], [6, 4])]), {});
+  assert.ok(f.start[0] > 0 && f.start[0] < 6 && f.start[1] > 0 && f.start[1] < 4, String(f.start));
+});
+test('forma en L: el punto de inicio cae dentro del cuarto', () => {
+  const L = [mkWall(1, [0, 0], [8, 0]), mkWall(2, [8, 0], [8, 3]), mkWall(3, [8, 3], [3, 3]),
+    mkWall(4, [3, 3], [3, 8]), mkWall(5, [3, 8], [0, 8]), mkWall(6, [0, 8], [0, 0])];
+  const f = M.floorMask(L, {});
+  assert.strictEqual(f.rooms.length, 1);
+  const inside = (x, y) => (x > 0 && x < 8 && y > 0 && y < 3) || (x > 0 && x < 3 && y > 0 && y < 8);
+  assert.ok(inside(f.start[0], f.start[1]), String(f.start));
+});
+test('la máscara incluye el piso bajo las paredes pero no afuera', () => {
+  const f = M.floorMask(room(0, 0, 6, 4), {});
+  const at = (x, y) => f.floor[Math.floor((y - f.oy) / f.cell) * f.nx + Math.floor((x - f.ox) / f.cell)];
+  assert.strictEqual(at(3, 2), 1); assert.strictEqual(at(0, 2), 1); assert.strictEqual(at(-0.3, 2), 0); assert.strictEqual(at(3, 4.3), 0); assert.strictEqual(at(6.3, 2), 0);
+});
+test('el piso no asoma fuera de la pared exterior', () => {
+  const f = M.floorMask(room(0, 0, 6, 4), {});
+  const at = (x, y) => f.floor[Math.floor((y - f.oy) / f.cell) * f.nx + Math.floor((x - f.ox) / f.cell)];
+  assert.strictEqual(at(-0.075, 2), 0);   // fuera de la pared
+  assert.strictEqual(at(-0.03, 2), 1);    // bajo la pared
+});
+test('sin paredes no hay piso', () => assert.strictEqual(M.floorMask([], {}).ok, false));
+test('plano largo no revienta la memoria', () => {
+  const f = M.floorMask(room(0, 0, 120, 6), {});
+  assert.ok(f.nx * f.ny <= 2500000); assert.strictEqual(f.rooms.length, 1);
 });
 
 console.log(`\n${passed} pruebas pasaron${process.exitCode ? ', con fallas' : ''}.`);

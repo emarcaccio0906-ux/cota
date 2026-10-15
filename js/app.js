@@ -88,6 +88,12 @@
   var history = [], histIdx = -1;
   var colors = {};
   var W = 300, H = 300, DPR = 1;
+  var mode = '2d', view3d = null, cam3 = 'orbit';
+  var s3 = { wallH: 2.4384, wallColor: 'blanco', floor: 'madera-clara', hour: 14, shadows: true, roof: false, doors: 90, cut: 0 };
+  var WALL_OPTS = [['blanco', 'Blanco'], ['crema', 'Crema'], ['concreto', 'Concreto'], ['gris', 'Gris oscuro'], ['ladrillo', 'Ladrillo'], ['pizarra', 'Azul pizarra']];
+  var FLOOR_OPTS = [['madera-clara', 'Madera clara'], ['madera-oscura', 'Madera oscura'], ['concreto', 'Concreto pulido'], ['baldosa-blanca', 'Baldosa blanca'], ['baldosa-gris', 'Baldosa gris']];
+  var HEIGHT_PRESETS = { ft: [8, 9, 10, 12].map(function (f) { return f * 0.3048; }), m: [2.4, 2.7, 3, 3.6] };
+
   var ptr = null;                   // puntero activo
   var touches = new Map();
   var gesture = null;
@@ -270,6 +276,7 @@
     draft = null;
     autosave();
     uiSync();
+    if (mode === '3d') sync3D(false);
     requestRender();
   }
   function undo() { if (draft) { cancelDraft(); return; } if (histIdx > 0) { histIdx--; applySnapshot(history[histIdx]); } }
@@ -282,7 +289,7 @@
     }, 350);
   }
   function savePrefs() {
-    try { localStorage.setItem(STORE_PREFS, JSON.stringify({ units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc, precision: precision })); } catch (e) { /* nada */ }
+    try { localStorage.setItem(STORE_PREFS, JSON.stringify({ units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc, precision: precision, s3: s3 })); } catch (e) { /* nada */ }
   }
   function loadPrefs() {
     try {
@@ -296,6 +303,10 @@
         if (p.grid && typeof p.grid.show === 'boolean' && isNum(p.grid.step) && p.grid.step >= 0 && isNum(p.grid.snapStep) && p.grid.snapStep >= 0 && [2, 4, 5, 8, 10].indexOf(p.grid.major) >= 0) gridCfg = p.grid;
         if ([0, 15, 30, 45, 90].indexOf(p.polar) >= 0) polarInc = p.polar;
         if (p.precision && [1, 2, 4, 8, 16].indexOf(p.precision.ft) >= 0 && [0, 1, 2, 3].indexOf(p.precision.m) >= 0) precision = p.precision;
+        var q = p.s3;
+        if (q && isNum(q.wallH) && q.wallH >= 1.5 && q.wallH <= 8 && isNum(q.hour) && q.hour >= 6 && q.hour <= 18 &&
+            WALL_OPTS.some(function (o) { return o[0] === q.wallColor; }) && FLOOR_OPTS.some(function (o) { return o[0] === q.floor; }) &&
+            typeof q.shadows === 'boolean' && typeof q.roof === 'boolean' && (q.doors === 0 || q.doors === 90) && [0, 1.2192, 0.3].indexOf(q.cut) >= 0) s3 = q;
         return true;
       }
     } catch (e) { /* nada */ }
@@ -312,6 +323,7 @@
     DPR = Math.min(window.devicePixelRatio || 1, 3);
     cv.width = Math.round(W * DPR);
     cv.height = Math.round(H * DPR);
+    if (view3d) view3d.resize(W, H);
     requestRender();
   }
 
@@ -1036,6 +1048,15 @@
     if (mod && k === 'a') { e.preventDefault(); doc.objects.forEach(function (o) { if (isVisible(o) && !isLocked(o)) selection.add(o.id); }); uiSync(); requestRender(); return; }
     if (mod) return;
 
+    if (mode === '3d') {
+      if (view3d && view3d.key(e, true)) { e.preventDefault(); return; }
+      if (e.key === 'f' || e.key === 'F') { if (view3d) view3d.fit(); }
+      else if (e.key === '1') setCam('orbit');
+      else if (e.key === '2') setCam('top');
+      else if (e.key === '3') setCam('walk');
+      return;
+    }
+
     if (e.key === ' ') { e.preventDefault(); if (!spaceDown) { spaceDown = true; cv.classList.add('pan'); } return; }
     if (e.key === 'Escape') {
       if (draft) cancelDraft();
@@ -1054,6 +1075,7 @@
     if (t) { e.preventDefault(); setTool(t.id); }
   });
   window.addEventListener('keyup', function (e) {
+    if (view3d && mode === '3d') view3d.key(e, false);
     if (e.key === ' ') { spaceDown = false; cv.classList.remove('pan'); }
     if (e.key === 'Shift') { shiftDown = false; updateCursor(mouse.sx, mouse.sy, false); requestRender(); }
   });
@@ -1215,7 +1237,7 @@
       box.appendChild(wrap);
       showed = true;
     }
-    box.hidden = !showed;
+    box.hidden = !showed || mode !== '2d';
   }
 
   function renderLayers() {
@@ -1393,7 +1415,7 @@
     $('u-ft').setAttribute('aria-pressed', String(units === 'ft'));
     $('u-m').setAttribute('aria-pressed', String(units === 'm'));
     var n = selection.size;
-    $('selbar').hidden = !(tool === 'select' && n > 0);
+    $('selbar').hidden = !(mode === '2d' && tool === 'select' && n > 0);
     $('sel-count').textContent = n + (n === 1 ? ' elegido' : ' elegidos');
     $('touchbar').hidden = !(usedTouch && draft);
     $('btn-theme').textContent = '';
@@ -1402,6 +1424,8 @@
     renderLayers();
     renderGridCfg();
     renderProps();
+    syncModeUI();
+    renderCfg3();
     updateReadout();
   }
 
@@ -1409,7 +1433,7 @@
   function toggleSnap() { snapOn = !snapOn; savePrefs(); uiSync(); updateCursor(mouse.sx, mouse.sy, shiftDown); requestRender(); }
   function toggleOrtho() { orthoOn = !orthoOn; savePrefs(); uiSync(); updateCursor(mouse.sx, mouse.sy, shiftDown); requestRender(); }
 
-  function setUnits(u) { units = u; savePrefs(); uiSync(); requestRender(); }
+  function setUnits(u) { units = u; savePrefs(); uiSync(); requestRender(); if (mode === '3d') sync3D(false); }
 
   function applyTheme(t) {
     theme = t;
@@ -1467,6 +1491,7 @@
     r.readAsText(f);
   });
   $('btn-png').addEventListener('click', function () {
+    if (mode === '3d' && view3d) { export3D(); return; }
     render(true);
     cv.toBlob(function (blob) {
       render(false);
@@ -1492,6 +1517,161 @@
   $('btn-theme').addEventListener('click', function () { applyTheme(theme === 'dark' ? 'light' : 'dark'); });
   $('btn-panel').addEventListener('click', function () { $('app').classList.toggle('panel-open'); });
   $('stage').addEventListener('pointerdown', function () { $('app').classList.remove('panel-open'); });
+
+  /* ------------------------------------------------------------------ */
+  /* Vista 3D                                                            */
+  /* ------------------------------------------------------------------ */
+  function visibleObjects() { return doc.objects.filter(isVisible); }
+
+  function sync3D(reset) {
+    if (!view3d) return;
+    view3d.sync(visibleObjects(), s3, units, !!reset);
+    renderCfg3();
+  }
+
+  function export3D() {
+    if (!view3d) return;
+    view3d.exportBlob(function (blob) {
+      if (blob) { download(blob, 'cota-3d.png'); toast('Imagen 3D guardada como cota-3d.png'); }
+    });
+  }
+
+  function setMode(m) {
+    if (m === mode) return;
+    if (m === '3d') {
+      if (!window.THREE || !window.CotaModel3D || !window.CotaView3D) { toast('No se pudo cargar el motor 3D.'); return; }
+      if (!view3d) {
+        try { view3d = window.CotaView3D.create($('cv3')); }
+        catch (e) { view3d = null; toast('Este navegador no pudo iniciar 3D (WebGL).'); return; }
+      }
+      draft = null; boxRect = null; ptr = null;
+      mode = '3d';
+      $('app').classList.add('mode-3d');
+      $('app').classList.remove('panel-open');
+      cv.hidden = true; $('cv3').hidden = false; $('cam3').hidden = false;
+      resize();
+      view3d.activate();
+      view3d.sync(visibleObjects(), s3, units, false);
+      cam3 = 'orbit';
+      view3d.setCameraMode('orbit', true);
+      if (!doc.objects.some(function (o) { return o.type === 'wall'; })) toast('Dibuja paredes en 2D y aparecen aquí en 3D.');
+    } else {
+      if (view3d) view3d.deactivate();
+      mode = '2d';
+      $('app').classList.remove('mode-3d');
+      cv.hidden = false; $('cv3').hidden = true; $('cam3').hidden = true;
+      resize();
+    }
+    uiSync(); requestRender();
+  }
+
+  function setCam(c) {
+    if (mode !== '3d' || !view3d) return;
+    cam3 = c;
+    view3d.setCameraMode(c);
+    uiSync();
+  }
+
+  var HINTS3 = {
+    orbit: 'Arrastra para girar · Shift o clic derecho para mover · rueda o pellizco para acercar',
+    top: 'Planta · arrastra para mover · rueda o pellizco para acercar',
+    walk: 'Recorrido · toca el piso para caminar · arrastra para mirar · W A S D para moverte'
+  };
+
+  function syncModeUI() {
+    $('m-2d').setAttribute('aria-pressed', String(mode === '2d'));
+    $('m-3d').setAttribute('aria-pressed', String(mode === '3d'));
+    ['orbit', 'top', 'walk'].forEach(function (c) { $('c-' + c).setAttribute('aria-pressed', String(cam3 === c)); });
+    $('hint3').textContent = HINTS3[cam3] || '';
+  }
+
+  function fmtHour(h) {
+    var hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+    if (mm === 60) { hh += 1; mm = 0; }
+    return ((hh % 12) || 12) + ':' + (mm < 10 ? '0' : '') + mm + (hh >= 12 && hh < 24 ? ' PM' : ' AM');
+  }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  function selectStr(options, value, onChange, label) {
+    var sel = el('select', { 'aria-label': label });
+    options.forEach(function (o) {
+      var op = el('option', { value: o[0], text: o[1] });
+      if (o[0] === value) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener('change', function () { onChange(sel.value); });
+    return sel;
+  }
+  function checkRow(value, onChange, label) {
+    var cb = el('input', { type: 'checkbox', 'aria-label': label });
+    cb.checked = !!value;
+    cb.addEventListener('change', function () { onChange(cb.checked); });
+    return cb;
+  }
+
+  function cfg3Changed() { savePrefs(); sync3D(false); }
+
+  function renderCfg3() {
+    if (mode !== '3d') return;
+    var box = $('cfg3');
+    box.textContent = '';
+
+    var hInp = el('input', { type: 'text', value: fmt(s3.wallH), 'aria-label': 'Altura de paredes' });
+    hInp.addEventListener('change', function () {
+      var m = U.parseLength(hInp.value, units);
+      if (isNaN(m) || m < 1.5 || m > 8) { toast('La altura va de 5\' a 26\' (1.5 m a 8 m).'); hInp.value = fmt(s3.wallH); return; }
+      s3.wallH = m; cfg3Changed();
+    });
+    hInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') hInp.blur(); });
+    var hPre = selectEl([['Elegir', 0]].concat(HEIGHT_PRESETS[units].map(function (m) { return [fmt(m), m]; })), 0, function (v) {
+      if (v > 0) { s3.wallH = v; cfg3Changed(); }
+    }, 'Alturas comunes');
+    box.appendChild(propRow('Altura', el('div', { class: 'dual' }, [hInp, hPre])));
+
+    box.appendChild(propRow('Paredes', selectStr(WALL_OPTS, s3.wallColor, function (v) { s3.wallColor = v; cfg3Changed(); }, 'Color de paredes')));
+    box.appendChild(propRow('Piso', selectStr(FLOOR_OPTS, s3.floor, function (v) { s3.floor = v; cfg3Changed(); }, 'Piso')));
+    box.appendChild(propRow('Corte', selectEl([['Paredes completas', 0], [units === 'ft' ? 'Corte a 4\'' : 'Corte a 1.2 m', 1.2192], ['Solo bases', 0.3]], s3.cut, function (v) { s3.cut = v; cfg3Changed(); }, 'Corte de paredes')));
+    box.appendChild(propRow('Puertas', selectEl([['Abiertas', 90], ['Cerradas', 0]], s3.doors, function (v) { s3.doors = v; cfg3Changed(); }, 'Puertas')));
+
+    var lbl = el('span', { class: 'val', text: fmtHour(s3.hour) });
+    var rng = el('input', { type: 'range', min: '6', max: '18', step: '0.25', value: String(s3.hour), 'aria-label': 'Hora del día' });
+    rng.addEventListener('input', function () {
+      s3.hour = parseFloat(rng.value);
+      lbl.textContent = fmtHour(s3.hour);
+      if (view3d) view3d.sync(visibleObjects(), s3, units, false);
+    });
+    rng.addEventListener('change', savePrefs);
+    box.appendChild(propRow('Hora', el('div', { class: 'dual' }, [rng, lbl])));
+
+    box.appendChild(propRow('Sombras', checkRow(s3.shadows, function (v) { s3.shadows = v; cfg3Changed(); }, 'Sombras')));
+    box.appendChild(propRow('Techo', checkRow(s3.roof, function (v) { s3.roof = v; cfg3Changed(); }, 'Techo')));
+
+    var info = view3d && view3d.info();
+    if (info) {
+      var parts = [plural(info.walls, 'pared', 'paredes'), plural(info.doors, 'puerta', 'puertas'), plural(info.windows, 'ventana', 'ventanas')];
+      var line = el('div', { class: 'info3' });
+      line.appendChild(document.createTextNode(parts.join(' · ')));
+      line.appendChild(document.createElement('br'));
+      if (info.rooms.length) {
+        line.appendChild(document.createTextNode(plural(info.rooms.length, 'cuarto cerrado', 'cuartos cerrados') + ' · '));
+        line.appendChild(el('b', { text: U.formatArea(info.area, units) }));
+      } else if (info.walls) {
+        line.appendChild(document.createTextNode('Sin cuartos cerrados: revisa que las paredes se toquen en las esquinas.'));
+      } else {
+        line.appendChild(document.createTextNode('Todavía no hay paredes.'));
+      }
+      box.appendChild(line);
+    }
+  }
+
+  $('m-2d').addEventListener('click', function () { setMode('2d'); });
+  $('m-3d').addEventListener('click', function () { setMode('3d'); });
+  $('c-orbit').addEventListener('click', function () { setCam('orbit'); });
+  $('c-top').addEventListener('click', function () { setCam('top'); });
+  $('c-walk').addEventListener('click', function () { setCam('walk'); });
+  $('c-fit').addEventListener('click', function () { if (view3d) view3d.fit(); });
+  $('c-img').addEventListener('click', export3D);
+  window.addEventListener('blur', function () { if (view3d) view3d.releaseKeys(); });
 
   /* ------------------------------------------------------------------ */
   /* Arranque                                                            */
@@ -1525,5 +1705,5 @@
   boot();
 
   // para depurar desde la consola del navegador
-  window.Cota = { get doc() { return doc; }, get view() { return view; }, setTool: setTool, fitView: fitView };
+  window.Cota = { get doc() { return doc; }, get view() { return view; }, get mode() { return mode; }, get view3d() { return view3d; }, get s3() { return s3; }, setTool: setTool, fitView: fitView, setMode: setMode, setCam: setCam };
 })();

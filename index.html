@@ -16,6 +16,11 @@
       <span>Cota</span>
     </div>
 
+    <div class="seg" id="mode-seg" role="group" aria-label="Modo de vista">
+      <button id="m-2d" class="seg-btn" aria-pressed="true">2D</button>
+      <button id="m-3d" class="seg-btn" aria-pressed="false">3D</button>
+    </div>
+
     <div class="group">
       <button class="icon-btn" id="btn-undo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"></button>
       <button class="icon-btn" id="btn-redo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer"></button>
@@ -31,8 +36,8 @@
     <div class="spacer"></div>
 
     <div class="seg" role="group" aria-label="Unidades">
-      <button id="u-ft" class="seg-btn" aria-pressed="true">pies</button>
-      <button id="u-m" class="seg-btn" aria-pressed="false">metros</button>
+      <button id="u-ft" class="seg-btn" aria-pressed="true" aria-label="Pies"><span class="long">pies</span><span class="short">ft</span></button>
+      <button id="u-m" class="seg-btn" aria-pressed="false" aria-label="Metros"><span class="long">metros</span><span class="short">m</span></button>
     </div>
     <button class="icon-btn" id="btn-theme" title="Tema claro/oscuro" aria-label="Cambiar tema"></button>
     <button class="icon-btn" id="btn-panel" title="Capas y propiedades" aria-label="Capas y propiedades"></button>
@@ -42,6 +47,17 @@
 
   <main class="stage" id="stage">
     <canvas id="cv" aria-label="Lienzo de dibujo"></canvas>
+    <canvas id="cv3" aria-label="Vista 3D" hidden></canvas>
+
+    <div class="float top-left cam3bar" id="cam3" hidden>
+      <div class="seg" role="group" aria-label="Cámara">
+        <button id="c-orbit" class="seg-btn" aria-pressed="true" title="Órbita (1)">Órbita</button>
+        <button id="c-top" class="seg-btn" aria-pressed="false" title="Planta (2)">Planta</button>
+        <button id="c-walk" class="seg-btn" aria-pressed="false" title="Recorrido (3)">Recorrido</button>
+      </div>
+      <button class="chip-btn" id="c-fit" title="Ver todo (F)">Todo</button>
+      <button class="chip-btn" id="c-img" title="Guardar imagen">Imagen</button>
+    </div>
 
     <div class="float top-left" id="options" hidden></div>
 
@@ -61,22 +77,26 @@
   </main>
 
   <aside id="panel" class="panel" aria-label="Capas y propiedades">
-    <section>
+    <section class="only-3d">
+      <div class="panel-head"><h2>Vista 3D</h2></div>
+      <div id="cfg3" class="props"></div>
+    </section>
+    <section class="only-2d">
       <div class="panel-head">
         <h2>Capas</h2>
         <button class="chip-btn" id="layer-add">+ Capa</button>
       </div>
       <ul id="layers" class="layers"></ul>
     </section>
-    <section>
+    <section class="only-2d">
       <div class="panel-head"><h2>Cuadrícula y medidas</h2></div>
       <div id="gridcfg" class="props"></div>
     </section>
-    <section>
+    <section class="only-2d">
       <div class="panel-head"><h2>Propiedades</h2></div>
       <div id="props" class="props"></div>
     </section>
-    <section class="help">
+    <section class="help only-2d">
       <div class="panel-head"><h2>Atajos</h2></div>
       <dl>
         <dt>V</dt><dd>Seleccionar</dd>
@@ -89,14 +109,24 @@
         <dt>2 dedos</dt><dd>Zoom y mover en iPad</dd>
       </dl>
     </section>
+    <section class="help only-3d">
+      <div class="panel-head"><h2>Cómo moverte</h2></div>
+      <dl>
+        <dt>Órbita</dt><dd>Arrastra para girar · Shift o clic derecho para mover · rueda o pellizco para acercar</dd>
+        <dt>Planta</dt><dd>Vista desde arriba. Arrastra para mover</dd>
+        <dt>Recorrido</dt><dd>Toca el piso para caminar · arrastra para mirar · W A S D o flechas · Shift corre</dd>
+        <dt>1 · 2 · 3 · F</dt><dd>Órbita · Planta · Recorrido · Ver todo</dd>
+      </dl>
+    </section>
   </aside>
 
   <footer class="statusbar">
-    <form id="cmd" class="cmd" autocomplete="off">
+    <form id="cmd" class="cmd only-2d" autocomplete="off">
       <label for="cmd-input" id="cmd-hint" class="cmd-hint">Elige una herramienta</label>
       <input id="cmd-input" type="text" inputmode="text" enterkeyhint="done" spellcheck="false" placeholder="Medida o x,y">
     </form>
-    <div class="status-right">
+    <div id="hint3" class="hint3 only-3d"></div>
+    <div class="status-right only-2d">
       <button class="tog" id="tog-grid" aria-pressed="true" title="Mostrar cuadrícula (F7)">Grid</button>
       <button class="tog" id="tog-snap" aria-pressed="true" title="Enganchar a cuadrícula y puntos (F3)">Snap</button>
       <button class="tog" id="tog-ortho" aria-pressed="false" title="Ortogonal (F8)">Orto</button>
@@ -119,8 +149,11 @@
 
 <input type="file" id="file-open" accept=".json,application/json" hidden>
 
+<script src="vendor/three.min.js"></script>
 <script src="js/units.js"></script>
 <script src="js/geom.js"></script>
+<script src="js/model3d.js"></script>
+<script src="js/view3d.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
