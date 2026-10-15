@@ -132,6 +132,55 @@
     return out;
   }
 
+
+  /* ---------- más piezas ---------- */
+  function nightstand(w, d) {
+    return [B(0, 0, w, d, 0, 0.58, 0xa4825a), B(0, -d / 2 + 0.005, w - 0.06, 0.01, 0.36, 0.5, 0x8a6a46), B(0, 0, 0.18, 0.18, 0.58, 0.62, 0xd9cdb8), B(0, 0, 0.04, 0.04, 0.62, 0.84, 0xc9b28a), B(0, 0, 0.24, 0.24, 0.84, 0.98, 0xf3ead8)];
+  }
+  function art(color) {        // cuadro colgado: marco y lámina
+    return function (w, d) { return [B(0, 0, w, d, 1.3, 1.3 + Math.min(1.2, w * 0.72), 0x3b3027), B(0, -0.006, w - 0.08, d, 1.34, 1.26 + Math.min(1.2, w * 0.72), color)]; };
+  }
+  function mirror(w, d) { return [B(0, 0, w, d, 1.0, 1.9, 0x8c8f93), B(0, -0.006, w - 0.06, d, 1.03, 1.87, 0xd5e4ee)]; }
+  function shelf(w, d) { return [B(0, 0, w, d, 1.45, 1.49, 0x9a7650)]; }
+  function wallTv(w, d) { return [B(0, 0, w, d, 1.0, 1.0 + w * 0.56, 0x111214)]; }
+  function floorLamp(w, d) { return [B(0, 0, w * 0.7, d * 0.7, 0, 0.03, 0x2b2b2b), B(0, 0, 0.03, 0.03, 0.03, 1.45, 0x2b2b2b), B(0, 0, w, d, 1.45, 1.7, 0xf3ead8)]; }
+  function plant(w, d) { return [B(0, 0, w * 0.6, d * 0.6, 0, 0.35, 0x8b5e3c), B(0, 0, w, d, 0.35, 1.1, 0x4f7f3a), B(0, 0, w * 0.6, d * 0.6, 1.1, 1.35, 0x5f9446)]; }
+  function rug(color) { return function (w, d) { return [B(0, 0, w, d, 0, 0.012, color)]; }; }
+  function bookcase(w, d) {
+    var out = [B(-w / 2 + 0.01, 0, 0.02, d, 0, 1.9, 0x8a6a46), B(w / 2 - 0.01, 0, 0.02, d, 0, 1.9, 0x8a6a46), B(0, d / 2 - 0.01, w, 0.02, 0, 1.9, 0x7a5c3c)];
+    for (var i = 0; i < 5; i++) out.push(B(0, 0, w, d, i * 0.46, i * 0.46 + 0.025, 0x8a6a46));
+    [0.05, 0.51, 0.97, 1.43].forEach(function (h, i) { out.push(B(-w * 0.12 + (i % 2) * 0.1, 0.02, w * 0.6, d * 0.7, h, h + 0.3, [0x7b3f3a, 0x3f5f7b, 0x6b7b3f, 0x7b6a3f][i])); });
+    return out;
+  }
+  function pouf(w, d) { return [B(0, 0, w, d, 0, 0.42, 0x8f7a64)]; }
+  function sofaL(w, d) {
+    var c = 0x5c6b7d, c2 = 0x6c7d92, hw = w / 2, hd = d / 2, arm = 0.92;
+    return [
+      B(0, hd - arm / 2, w, arm, 0.1, 0.4, c), B(0, hd - 0.1, w, 0.2, 0.4, 0.85, c),
+      B(-hw + arm / 2, -arm / 2 + 0.0, arm, d - arm, 0.1, 0.4, c), B(-hw + 0.1, -arm / 2, 0.2, d - arm, 0.4, 0.85, c),
+      B(hw - 0.1, hd - arm / 2, 0.2, arm - 0.2, 0.4, 0.62, c),
+      B(0.1, hd - arm / 2 - 0.06, w - 0.4, arm - 0.36, 0.4, 0.5, c2), B(-hw + arm / 2 + 0.06, -arm / 2, arm - 0.36, d - arm - 0.2, 0.4, 0.5, c2)
+    ];
+  }
+  function roundTable(h) { return function (w, d) { return [B(0, 0, w * 0.86, d * 0.86, h - 0.04, h, 0x9a7650), B(0, 0, w * 0.6, d * 0.6, h - 0.05, h - 0.03, 0x9a7650), B(0, 0, 0.08, 0.08, 0.04, h - 0.04, 0x7b5d3d), B(0, 0, w * 0.45, d * 0.45, 0, 0.04, 0x7b5d3d)]; }; }
+  function bench(w, d) { return [B(0, 0, w, d, 0.4, 0.45, 0x9a7650), B(-w / 2 + 0.05, 0, 0.06, d, 0, 0.4, 0x7b5d3d), B(w / 2 - 0.05, 0, 0.06, d, 0, 0.4, 0x7b5d3d)]; }
+  function stool(w, d) { return [B(0, 0, w, d, 0.7, 0.75, 0x3a3a3a), B(0, 0, 0.05, 0.05, 0.05, 0.7, 0x777777), B(0, 0, w * 0.8, d * 0.8, 0, 0.05, 0x555555)]; }
+  function island(w, d) { return [B(0, 0, w - 0.1, d - 0.1, 0, 0.88, 0xc9b79c), B(0, 0, w, d, 0.88, 0.92, 0xe4e1da)]; }
+  function dishwasher(w, d) { return [B(0, 0, w, d, 0, 0.86, 0xd8dadc), B(0, 0, w, d, 0.86, 0.9, 0xd9d9d6), B(0, -d / 2 + 0.01, w * 0.8, 0.02, 0.76, 0.8, 0x9aa0a6)]; }
+  function doubleVanity(w, d) {
+    return [B(0, 0, w, d, 0, 0.82, 0xe9e4da), B(-w / 4, -0.02, w * 0.28, d * 0.5, 0.82, 0.83, 0xbfc7cc), B(w / 4, -0.02, w * 0.28, d * 0.5, 0.82, 0.83, 0xbfc7cc),
+      B(-w / 4, d / 2 - 0.06, 0.04, 0.04, 0.82, 0.96, 0xb0b4b8), B(w / 4, d / 2 - 0.06, 0.04, 0.04, 0.82, 0.96, 0xb0b4b8)];
+  }
+  function officeChair(w, d) { return [B(0, 0, w * 0.9, d * 0.9, 0, 0.06, 0x2b2b2b), B(0, 0, 0.06, 0.06, 0.06, 0.45, 0x555555), B(0, -0.02, w * 0.8, d * 0.75, 0.45, 0.52, 0x2f3a46), B(0, d / 2 - 0.06, w * 0.75, 0.05, 0.52, 1.05, 0x2f3a46)]; }
+  function filing(w, d) { var out = [B(0, 0, w, d, 0, 1.32, 0x8f969c)]; for (var i = 1; i < 4; i++) out.push(B(0, -d / 2 + 0.005, w * 0.5, 0.012, i * 0.33 - 0.06, i * 0.33 - 0.03, 0x5b6268)); return out; }
+  function crib(w, d) { return [B(0, 0, w, d, 0.3, 0.45, 0xf2efe9), B(0, -d / 2 + 0.02, w, 0.04, 0, 0.95, 0xe7dcc8), B(0, d / 2 - 0.02, w, 0.04, 0, 0.95, 0xe7dcc8), B(-w / 2 + 0.02, 0, 0.04, d, 0, 0.95, 0xe7dcc8), B(w / 2 - 0.02, 0, 0.04, d, 0, 0.95, 0xe7dcc8)]; }
+  function vanityDesk(w, d) { var out = table(0.76, 0xe9e4da, 0.04)(w, d); out.push(B(0, d / 2 - 0.02, w * 0.6, 0.03, 0.9, 1.6, 0xd5e4ee)); return out; }
+  function ceilingFan(w, d) { return [B(0, 0, 0.2, 0.2, 2.25, 2.4, 0xeeeeee), B(0, 0, w, 0.14, 2.28, 2.3, 0x9a7650), B(0, 0, 0.14, d, 2.28, 2.3, 0x9a7650)]; }
+  function moto(w, d) { return [B(0, -d * 0.35, 0.12, 0.6, 0, 0.6, 0x1b1b1b), B(0, d * 0.35, 0.12, 0.6, 0, 0.6, 0x1b1b1b), B(0, 0, w * 0.5, d * 0.6, 0.45, 0.9, 0x7e1f26), B(0, d * 0.3, w, 0.06, 1.0, 1.04, 0x333333)]; }
+  function grill(w, d) { return [B(0, 0, w, d, 0.75, 1.1, 0x2b2b2b), B(0, 0, w * 0.9, d * 0.8, 0, 0.75, 0x3d3d3d)]; }
+  function bunk(w, d) { var out = bed(1)(w, d); out.push(B(0, 0, w, d, 1.3, 1.45, 0x8a6a4a), B(0, -0.04, w - 0.06, d - 0.14, 1.45, 1.62, 0xf2efe9)); [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (q) { out.push(B(q[0] * (w / 2 - 0.03), q[1] * (d / 2 - 0.03), 0.06, 0.06, 0, 1.8, 0x6e5238)); }); return out; }
+  function curtain(w, d) { return [B(0, 0, w, d, 0.05, 2.3, 0xe8e1d4), B(0, 0, w + 0.1, 0.03, 2.3, 2.33, 0x777777)]; }
+
   /* ---------- catálogo (medidas en metros) ---------- */
   var CATALOG = [
     { id: 'cama-queen', name: 'Cama queen', cat: 'Dormitorio', w: 1.52, d: 2.03, wall: true, make: bed(2) },
@@ -159,7 +208,45 @@
     { id: 'carro', name: 'Carro', cat: 'Garaje', w: 1.85, d: 4.5, make: car },
     { id: 'mesa-trabajo', name: 'Mesa de trabajo', cat: 'Garaje', w: 1.8, d: 0.7, wall: true, make: table(0.9, 0x7c7f83, 0.07) },
     { id: 'estante', name: 'Estante', cat: 'Garaje', w: 1.2, d: 0.45, wall: true, make: block(1.9, 0x6d7076) },
-    { id: 'escalera', name: 'Escalera recta', cat: 'Escalera', w: 1.0, d: 3.0, stairs: true, make: stairs }
+    { id: 'escalera', name: 'Escalera recta', cat: 'Escalera', w: 1.0, d: 3.0, stairs: true, make: stairs },
+    // dormitorio
+    { id: 'mesa-noche', name: 'Mesa de noche', cat: 'Dormitorio', w: 0.5, d: 0.4, wall: true, make: nightstand },
+    { id: 'cama-full', name: 'Cama matrimonial (full)', cat: 'Dormitorio', w: 1.37, d: 1.91, wall: true, make: bed(2) },
+    { id: 'litera', name: 'Litera', cat: 'Dormitorio', w: 0.99, d: 1.95, wall: true, make: bunk },
+    { id: 'cuna', name: 'Cuna', cat: 'Dormitorio', w: 0.72, d: 1.33, wall: true, make: crib },
+    { id: 'tocador', name: 'Tocador con espejo', cat: 'Dormitorio', w: 1.0, d: 0.45, wall: true, make: vanityDesk },
+    { id: 'banco-cama', name: 'Banco al pie de cama', cat: 'Dormitorio', w: 1.2, d: 0.4, make: bench },
+    // decoración y pared
+    { id: 'cuadro', name: 'Cuadro grande', cat: 'Decoración', w: 1.0, d: 0.04, wall: true, mount: true, make: art(0x7a8fa8) },
+    { id: 'cuadro-chico', name: 'Cuadro pequeño', cat: 'Decoración', w: 0.5, d: 0.03, wall: true, mount: true, make: art(0xc28b5a) },
+    { id: 'espejo', name: 'Espejo', cat: 'Decoración', w: 0.6, d: 0.03, wall: true, mount: true, make: mirror },
+    { id: 'repisa', name: 'Repisa flotante', cat: 'Decoración', w: 0.9, d: 0.22, wall: true, mount: true, make: shelf },
+    { id: 'tv-pared', name: 'TV en la pared', cat: 'Decoración', w: 1.4, d: 0.06, wall: true, mount: true, make: wallTv },
+    { id: 'cortina', name: 'Cortina', cat: 'Decoración', w: 1.6, d: 0.1, wall: true, make: curtain },
+    { id: 'alfombra', name: 'Alfombra', cat: 'Decoración', w: 2.4, d: 1.7, round: false, make: rug(0xb7a68a) },
+    { id: 'alfombra-redonda', name: 'Alfombra redonda', cat: 'Decoración', w: 1.8, d: 1.8, round: true, make: rug(0x9aa7b0) },
+    { id: 'planta', name: 'Planta en maceta', cat: 'Decoración', w: 0.5, d: 0.5, round: true, make: plant },
+    { id: 'lampara-pie', name: 'Lámpara de pie', cat: 'Decoración', w: 0.4, d: 0.4, round: true, make: floorLamp },
+    { id: 'ventilador', name: 'Ventilador de techo', cat: 'Decoración', w: 1.3, d: 1.3, round: true, make: ceilingFan },
+    // sala
+    { id: 'sofa-l', name: 'Sofá en L', cat: 'Sala', w: 2.7, d: 1.7, wall: true, make: sofaL },
+    { id: 'librero', name: 'Librero', cat: 'Sala', w: 0.9, d: 0.35, wall: true, make: bookcase },
+    { id: 'mesa-auxiliar', name: 'Mesa auxiliar', cat: 'Sala', w: 0.5, d: 0.5, make: table(0.55, 0x8a6a4a, 0.04) },
+    { id: 'puff', name: 'Puff', cat: 'Sala', w: 0.5, d: 0.5, round: true, make: pouf },
+    // comedor y cocina
+    { id: 'mesa-redonda', name: 'Mesa redonda', cat: 'Comedor', w: 1.1, d: 1.1, round: true, make: roundTable(0.76) },
+    { id: 'banco', name: 'Banco', cat: 'Comedor', w: 1.4, d: 0.38, make: bench },
+    { id: 'taburete', name: 'Taburete de barra', cat: 'Cocina', w: 0.4, d: 0.4, round: true, make: stool },
+    { id: 'isla', name: 'Isla de cocina', cat: 'Cocina', w: 1.8, d: 0.9, make: island },
+    { id: 'lavavajillas', name: 'Lavavajillas', cat: 'Cocina', w: 0.6, d: 0.6, wall: true, make: dishwasher },
+    // baño
+    { id: 'lavamanos-doble', name: 'Lavamanos doble', cat: 'Baño', w: 1.5, d: 0.55, wall: true, make: doubleVanity },
+    // oficina
+    { id: 'silla-oficina', name: 'Silla de oficina', cat: 'Oficina', w: 0.6, d: 0.6, round: true, make: officeChair },
+    { id: 'archivador', name: 'Archivador', cat: 'Oficina', w: 0.4, d: 0.6, wall: true, make: filing },
+    // garaje y patio
+    { id: 'moto', name: 'Moto', cat: 'Garaje', w: 0.8, d: 2.1, make: moto },
+    { id: 'parrilla', name: 'Parrilla', cat: 'Garaje', w: 1.2, d: 0.6, make: grill }
   ];
   var BY_ID = {};
   CATALOG.forEach(function (c) { BY_ID[c.id] = c; });
@@ -171,11 +258,25 @@
     return out;
   }
 
-  /** Cajas locales del mueble para armarlo en 3D. rise solo importa para escaleras. */
-  function boxes(kind, w, d, rise) {
+  /** Cajas locales del mueble para armarlo en 3D. rise solo importa para escaleras.
+   *  hgt (opcional) estira la altura total; elev (opcional) sube el mueble para que su base quede a esa altura. */
+  function boxes(kind, w, d, rise, hgt, elev) {
     var c = BY_ID[kind];
     if (!c) return [B(0, 0, w, d, 0, 0.5, 0x999999)];
-    return c.make(w, d, rise);
+    var out = c.make(w, d, rise);
+    if (c.stairs || (!(hgt > 0) && !(elev >= 0))) return out;
+    var lo = Infinity, hi = -Infinity;
+    out.forEach(function (b) { lo = Math.min(lo, b.h0); hi = Math.max(hi, b.h1); });
+    var k = hgt > 0 && hi - lo > 1e-6 ? hgt / (hi - lo) : 1, base = elev >= 0 ? elev : lo;
+    return out.map(function (b) { return B(b.x, b.y, b.w, b.d, base + (b.h0 - lo) * k, base + (b.h1 - lo) * k, b.color); });
+  }
+  /** Altura y base que trae el mueble por defecto. */
+  function heightOf(kind) {
+    var c = BY_ID[kind];
+    if (!c) return { h: 0.5, elev: 0 };
+    var out = c.make(c.w, c.d, 2.6), lo = Infinity, hi = -Infinity;
+    out.forEach(function (b) { lo = Math.min(lo, b.h0); hi = Math.max(hi, b.h1); });
+    return { h: hi - lo, elev: lo };
   }
 
   /* ---------- geometría del mueble en el plano ---------- */
@@ -238,7 +339,7 @@
   }
 
   var api = {
-    CATALOG: CATALOG, get: get, cats: cats, boxes: boxes, inch: inch,
+    CATALOG: CATALOG, get: get, cats: cats, boxes: boxes, heightOf: heightOf, inch: inch,
     toWorld: toWorld, toLocal: toLocal, corners: corners, contains: contains, distTo: distTo, alignToWall: alignToWall
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

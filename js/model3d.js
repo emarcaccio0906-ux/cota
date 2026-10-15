@@ -57,7 +57,7 @@
       if (hi - lo < 1e-6) return;
 
       if (op.type === 'door') {
-        var head = Math.min(o.doorH, H);
+        var head = Math.min(op.h > 0 ? op.h : o.doorH, H);
         add('wall', lo - EPS, hi + EPS, head, H);                  // muro sobre la puerta
         var tw = w.t + 0.02;
         add('trim', lo, lo + 0.045, 0, head, tw);                  // jambas y cabezal
@@ -78,7 +78,7 @@
           len: len, thick: o.leafT, h0: 0, h1: head - 0.01, wall: w.id
         });
       } else {
-        var sill = Math.min(o.sillH, H), top = Math.min(sill + o.winH, H);
+        var sill = Math.min(op.sill >= 0 ? op.sill : o.sillH, H), top = Math.min(sill + (op.h > 0 ? op.h : o.winH), H);
         add('wall', lo - EPS, hi + EPS, 0, sill + EPS);            // muro bajo la ventana
         add('wall', lo - EPS, hi + EPS, top - EPS, H);             // muro sobre la ventana
         if (top - sill < 0.15) return;
@@ -282,7 +282,7 @@
   /** Piezas 3D de un mueble. rise = altura que salva una escalera. */
   function furnParts(f, rise) {
     var a = (f.ang || 0) * Math.PI / 180;
-    return F.boxes(f.kind, f.w, f.d, rise).map(function (b) {
+    return F.boxes(f.kind, f.w, f.d, rise, f.hgt, f.elev).map(function (b) {
       return { kind: 'furn', color: b.color, c: F.toWorld(f, b.x, b.y), ang: a, len: b.w, thick: b.d, h0: b.h0, h1: b.h1, furn: f.id };
     });
   }

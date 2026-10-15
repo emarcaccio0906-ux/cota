@@ -344,11 +344,19 @@
         case 'wall': ok = isPt(o.a) && isPt(o.b) && isNum(o.t) && o.t > 0; if (ok) { base.a = o.a.slice(); base.b = o.b.slice(); base.t = o.t; wallIds[base.id] = true; } break;
         case 'door': case 'window':
           ok = isNum(o.wall) && isNum(o.pos) && isNum(o.w) && o.w > 0;
-          if (ok) { base.wall = o.wall; base.pos = o.pos; base.w = o.w; base.flip = !!o.flip; if (o.roll && o.type === 'door') base.roll = true; }
+          if (ok) {
+            base.wall = o.wall; base.pos = o.pos; base.w = o.w; base.flip = !!o.flip; if (o.roll && o.type === 'door') base.roll = true;
+            if (isNum(o.h) && o.h > 0.2 && o.h < 6) base.h = o.h;
+            if (o.type === 'window' && isNum(o.sill) && o.sill >= 0 && o.sill < 6) base.sill = o.sill;
+          }
           break;
         case 'furn':
           ok = isPt(o.p) && isNum(o.w) && o.w > 0.05 && isNum(o.d) && o.d > 0.05 && typeof o.kind === 'string';
-          if (ok) { base.kind = String(o.kind).slice(0, 40); base.p = o.p.slice(); base.w = o.w; base.d = o.d; base.ang = isNum(o.ang) ? ((o.ang % 360) + 360) % 360 : 0; }
+          if (ok) {
+            base.kind = String(o.kind).slice(0, 40); base.p = o.p.slice(); base.w = o.w; base.d = o.d; base.ang = isNum(o.ang) ? ((o.ang % 360) + 360) % 360 : 0;
+            if (isNum(o.hgt) && o.hgt > 0.005 && o.hgt < 10) base.hgt = o.hgt;
+            if (isNum(o.elev) && o.elev >= 0 && o.elev < 10) base.elev = o.elev;
+          }
           break;
         case 'room':
           ok = isPt(o.p);
@@ -824,7 +832,8 @@
     function ell(x, y, rx, ry) { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.001, rx), Math.max(0.001, ry), 0, 0, Math.PI * 2); ctx.stroke(); }
     function ln(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
     if (ghost) { ctx.globalAlpha = 0.18; ctx.beginPath(); ctx.rect(-hw, -hd, o.w, o.d); ctx.fill(); ctx.globalAlpha = 1; }
-    box(0, 0, o.w, o.d);
+    var itm = F.get(o.kind);
+    if (itm && itm.round) ell(0, 0, hw, hd); else box(0, 0, o.w, o.d);
     var k = o.kind, thin = 0.7;
     ctx.lineWidth = lw * thin / sc;
     switch (k) {
@@ -853,6 +862,38 @@
       case 'carro': box(0, -o.d * 0.04, o.w - 0.3, o.d * 0.44); ln(-hw + 0.05, o.d * 0.28, hw - 0.05, o.d * 0.28);
         [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (q) { box(q[0] * (hw + 0.0), q[1] * o.d * 0.31, 0.2, 0.62); }); break;
       case 'estante': box(0, 0, o.w - 0.1, o.d - 0.1); break;
+      case 'mesa-noche': box(0, 0, o.w - 0.06, o.d - 0.06); ell(0, 0, Math.min(hw, hd) * 0.42, Math.min(hw, hd) * 0.42); break;
+      case 'cama-full': box(-o.w / 4, hd - 0.3, o.w / 2 - 0.1, 0.4); box(o.w / 4, hd - 0.3, o.w / 2 - 0.1, 0.4); ln(-hw, hd - 0.75, hw, hd - 0.75); break;
+      case 'litera': box(0, hd - 0.3, o.w - 0.2, 0.4); ln(-hw, -hd, hw, hd); ln(-hw, hd - 0.75, hw, hd - 0.75); break;
+      case 'cuna': box(0, 0, o.w - 0.08, o.d - 0.08); break;
+      case 'tocador': ln(-o.w * 0.3, hd - 0.03, o.w * 0.3, hd - 0.03); box(0, 0, o.w - 0.1, o.d - 0.1); break;
+      case 'banco-cama': case 'banco': ln(-hw + 0.08, -hd, -hw + 0.08, hd); ln(hw - 0.08, -hd, hw - 0.08, hd); break;
+      case 'cuadro': case 'cuadro-chico': case 'espejo': case 'tv-pared':
+        ctx.lineWidth = lw * 1.4 / sc; ln(-hw, -hd, hw, -hd); break;
+      case 'repisa': ln(-hw, 0, hw, 0); break;
+      case 'cortina': for (var cx = -hw + 0.1; cx < hw; cx += 0.2) { ctx.beginPath(); ctx.arc(cx, 0, 0.1, Math.PI, 0, false); ctx.stroke(); } break;
+      case 'alfombra': box(0, 0, o.w - 0.16, o.d - 0.16); for (var fx = -hw + 0.1; fx < hw; fx += 0.15) { ln(fx, -hd, fx, -hd - 0.06); ln(fx, hd, fx, hd + 0.06); } break;
+      case 'alfombra-redonda': ell(0, 0, hw - 0.1, hd - 0.1); break;
+      case 'planta': for (var pa = 0; pa < 6; pa++) { var an = pa * Math.PI / 3; ctx.beginPath(); ctx.ellipse(Math.cos(an) * hw * 0.45, Math.sin(an) * hd * 0.45, hw * 0.42, hd * 0.18, an, 0, Math.PI * 2); ctx.stroke(); } break;
+      case 'lampara-pie': ell(0, 0, hw * 0.4, hd * 0.4); ln(-hw * 0.7, 0, hw * 0.7, 0); ln(0, -hd * 0.7, 0, hd * 0.7); break;
+      case 'ventilador': ell(0, 0, 0.1, 0.1); ln(-hw, 0, hw, 0); ln(0, -hd, 0, hd); break;
+      case 'sofa-l': {
+        var ar = 0.92;
+        ctx.beginPath(); ctx.moveTo(-hw, hd); ctx.lineTo(hw, hd); ctx.lineTo(hw, hd - ar); ctx.lineTo(-hw + ar, hd - ar); ctx.lineTo(-hw + ar, -hd); ctx.lineTo(-hw, -hd); ctx.closePath(); ctx.stroke();
+        ln(-hw + 0.2, hd - 0.2, hw, hd - 0.2); ln(-hw + 0.2, hd - 0.2, -hw + 0.2, -hd); break;
+      }
+      case 'librero': for (var lb = 1; lb < 3; lb++) ln(-hw + lb * o.w / 3, -hd, -hw + lb * o.w / 3, hd); ln(-hw, hd - 0.02, hw, hd - 0.02); break;
+      case 'mesa-auxiliar': box(0, 0, o.w - 0.08, o.d - 0.08); break;
+      case 'puff': ell(0, 0, hw * 0.75, hd * 0.75); break;
+      case 'mesa-redonda': ell(0, 0, hw * 0.86, hd * 0.86); break;
+      case 'taburete': ell(0, 0, hw * 0.6, hd * 0.6); break;
+      case 'isla': box(0, 0, o.w - 0.1, o.d - 0.1); break;
+      case 'lavavajillas': ln(-hw, -hd + 0.08, hw, -hd + 0.08); ln(-hw, -hd, hw, hd); break;
+      case 'lavamanos-doble': ell(-o.w / 4, -0.02, o.w * 0.14, o.d * 0.25); ell(o.w / 4, -0.02, o.w * 0.14, o.d * 0.25); break;
+      case 'silla-oficina': ell(0, -0.02, hw * 0.8, hd * 0.7); ln(-hw * 0.75, hd - 0.06, hw * 0.75, hd - 0.06); break;
+      case 'archivador': for (var ai = 1; ai < 4; ai++) ln(-hw, -hd + ai * o.d / 4, hw, -hd + ai * o.d / 4); break;
+      case 'moto': ell(0, -o.d * 0.35, 0.06, 0.3); ell(0, o.d * 0.35, 0.06, 0.3); box(0, 0, o.w * 0.5, o.d * 0.6); ln(-hw, o.d * 0.3, hw, o.d * 0.3); break;
+      case 'parrilla': box(0, 0, o.w - 0.1, o.d - 0.1); for (var gi = 1; gi < 6; gi++) ln(-hw + 0.05 + gi * (o.w - 0.1) / 6, -hd + 0.05, -hw + 0.05 + gi * (o.w - 0.1) / 6, hd - 0.05); break;
       case 'escalera': {
         var n = Math.max(3, Math.round(o.d / 0.28));
         for (var i = 1; i < n; i++) ln(-hw, -hd + i * o.d / n, hw, -hd + i * o.d / n);
@@ -1723,6 +1764,13 @@
     }
     if (e.key === 'Enter') { if (draft) { e.preventDefault(); finishDraft(); } return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (selection.size) {
+        var st = e.shiftKey ? (units === 'ft' ? IN_M : 0.01) : (snapOn ? snapStep() : (units === 'ft' ? 6 * IN_M : 0.1));
+        var mv = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[e.key];
+        if (nudge(mv[0], mv[1])) { e.preventDefault(); return; }
+      }
+    }
     if (e.key === 'F3') { e.preventDefault(); toggleSnap(); return; }
     if (e.key === 'F7') { e.preventDefault(); toggleGrid(); return; }
     if (e.key === 'F8') { e.preventDefault(); toggleOrtho(); return; }
@@ -2267,6 +2315,7 @@
     if (list.length > 1) {
       box.appendChild(propRow('Elegidos', valSpan(list.length + ' objetos')));
       box.appendChild(propRow('Capa', lsel));
+      box.appendChild(moveRow(list));
       return;
     }
     var o = list[0], map = idMap();
@@ -2285,34 +2334,59 @@
     }
     switch (o.type) {
       case 'line':
-        box.appendChild(propRow('Largo', valSpan(fmt(G.dist(o.a, o.b)))));
-        box.appendChild(propRow('Ángulo', valSpan((Math.round(((Math.atan2(o.b[1] - o.a[1], o.b[0] - o.a[0]) * 180 / Math.PI) + 360) % 360 * 10) / 10) + '°')));
+        box.appendChild(propRow('Largo', lenField(G.dist(o.a, o.b), function (m) { setLen(o, m); })));
+        box.appendChild(propRow('Ángulo', angField(segAng(o.a, o.b), function (a) { setAng(o, a); })));
+        box.appendChild(propRow('Inicio', xyField(o.a, function (q) { o.a = q; })));
+        box.appendChild(propRow('Fin', xyField(o.b, function (q) { o.b = q; })));
         break;
       case 'polyline':
         box.appendChild(propRow('Largo total', valSpan(fmt(G.polyLength(o.pts, o.closed)))));
         if (o.closed) box.appendChild(propRow('Área', valSpan(U.formatArea(G.polyArea(o.pts), units))));
         box.appendChild(propRow('Puntos', valSpan(String(o.pts.length))));
+        box.appendChild(propRow('Primer punto', xyField(o.pts[0], function (q) { var dx = q[0] - o.pts[0][0], dy = q[1] - o.pts[0][1]; G.translateObj(o, dx, dy); })));
         break;
       case 'rect':
-        box.appendChild(propRow('Ancho', valSpan(fmt(Math.abs(o.b[0] - o.a[0])))));
-        box.appendChild(propRow('Alto', valSpan(fmt(Math.abs(o.b[1] - o.a[1])))));
+        var x0 = Math.min(o.a[0], o.b[0]), y0 = Math.min(o.a[1], o.b[1]);
+        box.appendChild(propRow('Ancho', lenField(Math.abs(o.b[0] - o.a[0]), function (m) { o.a = [x0, Math.min(o.a[1], o.b[1])]; o.b = [x0 + m, Math.max(o.a[1], o.b[1])]; })));
+        box.appendChild(propRow('Alto', lenField(Math.abs(o.b[1] - o.a[1]), function (m) { var xa = Math.min(o.a[0], o.b[0]), xb = Math.max(o.a[0], o.b[0]); o.a = [xa, y0]; o.b = [xb, y0 + m]; })));
+        box.appendChild(propRow('Esquina abajo izq.', xyField([x0, y0], function (q) { G.translateObj(o, q[0] - x0, q[1] - y0); })));
         box.appendChild(propRow('Área', valSpan(U.formatArea(Math.abs((o.b[0] - o.a[0]) * (o.b[1] - o.a[1])), units))));
         break;
       case 'circle':
-        box.appendChild(propRow('Radio', valSpan(fmt(o.r))));
-        box.appendChild(propRow('Diámetro', valSpan(fmt(o.r * 2))));
+        box.appendChild(propRow('Radio', lenField(o.r, function (m) { o.r = m; })));
+        box.appendChild(propRow('Diámetro', lenField(o.r * 2, function (m) { o.r = m / 2; })));
+        box.appendChild(propRow('Centro', xyField(o.c, function (q) { o.c = q; })));
         box.appendChild(propRow('Área', valSpan(U.formatArea(Math.PI * o.r * o.r, units))));
         break;
       case 'wall':
-        box.appendChild(propRow('Largo', valSpan(fmt(G.dist(o.a, o.b)))));
-        box.appendChild(propRow('Espesor', editField(fmt(o.t), function (m) { o.t = m; })));
+        box.appendChild(propRow('Largo', lenField(G.dist(o.a, o.b), function (m) {
+          var u = G.norm(G.sub(o.b, o.a)); stretchWall(o, G.add(o.a, G.mul(u, m)));
+        })));
+        box.appendChild(propRow('Ángulo', angField(segAng(o.a, o.b), function (a) {
+          var L = G.dist(o.a, o.b), r = a * Math.PI / 180; moveWallEnd(o, 'b', [o.a[0] + Math.cos(r) * L, o.a[1] + Math.sin(r) * L]);
+        })));
+        box.appendChild(propRow('Espesor', lenField(o.t, function (m) { o.t = m; }, { presets: WALL_PRESETS })));
+        box.appendChild(propRow('Inicio', xyField(o.a, function (q) { moveWallEnd(o, 'a', q); })));
+        box.appendChild(propRow('Fin', xyField(o.b, function (q) { moveWallEnd(o, 'b', q); })));
+        box.appendChild(el('div', { class: 'hint', text: 'Las paredes pegadas en las esquinas se mueven junto con esta.' }));
         break;
       case 'door': case 'window':
-        box.appendChild(propRow('Ancho', editField(fmt(o.w), function (m) {
-          var wl = map[o.wall]; var L = wl ? G.dist(wl.a, wl.b) : 0;
-          if (m > L) { toast('La pared es más corta que esa abertura.'); return; }
+        var wl = map[o.wall], L = wl ? G.dist(wl.a, wl.b) : 0;
+        box.appendChild(propRow('Ancho', lenField(o.w, function (m) {
+          if (m > L) { toast('La pared es más corta que esa abertura.'); return false; }
           o.w = m; o.pos = G.clamp(o.pos, m / 2, L - m / 2);
-        })));
+        }, { presets: (o.type === 'door' ? DOOR_PRESETS : WINDOW_PRESETS)[units].map(function (m) { return [fmt(m), m]; }) })));
+        box.appendChild(propRow('Desde el inicio', lenField(o.pos - o.w / 2, function (m) {
+          if (m + o.w > L + 1e-9) { toast('No cabe: la pared mide ' + fmt(L) + '.'); return false; }
+          o.pos = m + o.w / 2;
+        }, { zero: true })));
+        box.appendChild(propRow('Desde el final', lenField(L - o.pos - o.w / 2, function (m) {
+          if (m + o.w > L + 1e-9) { toast('No cabe: la pared mide ' + fmt(L) + '.'); return false; }
+          o.pos = L - m - o.w / 2;
+        }, { zero: true })));
+        var D3 = M3.DEFAULTS;
+        box.appendChild(propRow('Alto', lenField(o.h > 0 ? o.h : (o.type === 'door' ? D3.doorH : D3.winH), function (m) { o.h = m; })));
+        if (o.type === 'window') box.appendChild(propRow('Antepecho', lenField(o.sill >= 0 ? o.sill : D3.sillH, function (m) { o.sill = m; }, { zero: true })));
         var flip = el('button', { class: 'chip-btn', type: 'button', text: 'Invertir lado' });
         flip.addEventListener('click', function () { o.flip = !o.flip; commit(); });
         box.appendChild(propRow('Apertura', flip));
@@ -2328,20 +2402,33 @@
         var item = F.get(o.kind);
         if (item) {
           var ksel = el('select', { 'aria-label': 'Tipo de mueble' });
-          F.CATALOG.forEach(function (c) { var op = el('option', { value: c.id, text: c.name }); if (c.id === o.kind) op.selected = true; ksel.appendChild(op); });
-          ksel.addEventListener('change', function () { var c = F.get(ksel.value); if (!c) return; o.kind = c.id; o.w = c.w; o.d = c.d; commit(); });
+          F.cats().forEach(function (cat) {
+            var g = el('optgroup', { label: cat });
+            F.CATALOG.filter(function (c) { return c.cat === cat; }).forEach(function (c) { var op = el('option', { value: c.id, text: c.name }); if (c.id === o.kind) op.selected = true; g.appendChild(op); });
+            ksel.appendChild(g);
+          });
+          ksel.addEventListener('change', function () { var c = F.get(ksel.value); if (!c) return; o.kind = c.id; o.w = c.w; o.d = c.d; delete o.hgt; delete o.elev; commit(); });
           box.appendChild(propRow('Mueble', ksel));
         }
-        box.appendChild(propRow('Ancho', editField(fmt(o.w), function (m) { o.w = m; })));
-        box.appendChild(propRow(o.kind === 'escalera' ? 'Largo' : 'Fondo', editField(fmt(o.d), function (m) { o.d = m; })));
-        var ai = el('input', { type: 'text', value: String(Math.round((o.ang || 0) * 10) / 10) + '°', 'aria-label': 'Ángulo' });
-        ai.addEventListener('change', function () {
-          var v = parseFloat(ai.value);
-          if (isNaN(v)) { toast('Escribe el ángulo en grados.'); ai.value = (o.ang || 0) + '°'; return; }
-          o.ang = ((v % 360) + 360) % 360; commit();
-        });
-        ai.addEventListener('keydown', function (e) { if (e.key === 'Enter') ai.blur(); });
-        box.appendChild(propRow('Ángulo', ai));
+        var hd0 = F.heightOf(o.kind);
+        box.appendChild(propRow('Ancho', lenField(o.w, function (m) { o.w = m; })));
+        box.appendChild(propRow(o.kind === 'escalera' ? 'Largo' : 'Fondo', lenField(o.d, function (m) { o.d = m; })));
+        if (o.kind !== 'escalera') {
+          box.appendChild(propRow('Alto', lenField(o.hgt > 0 ? o.hgt : hd0.h, function (m) { o.hgt = m; })));
+          box.appendChild(propRow('Desde el piso', lenField(o.elev >= 0 ? o.elev : hd0.elev, function (m) { o.elev = m; }, { zero: true })));
+        }
+        box.appendChild(propRow('Centro', xyField(o.p, function (q) { o.p = q; })));
+        box.appendChild(propRow('Ángulo', angField(o.ang || 0, function (a) { o.ang = ((a % 360) + 360) % 360; })));
+        var fr = el('div', { class: 'btn-row' }, [
+          btn('Girar 90°', function () { o.ang = ((o.ang || 0) + 90) % 360; commit(); }),
+          btn('Pegar a la pared', function () {
+            var walls = doc.objects.filter(function (w) { return w.type === 'wall' && isVisible(w); });
+            var al = F.alignToWall(o.p, o.w, o.d, walls, 1.5);
+            if (!al) { toast('No hay una pared cerca (a menos de ' + fmt(1.5) + ').'); return; }
+            o.p = al.p; o.ang = al.ang; commit();
+          })
+        ]);
+        box.appendChild(fr);
         if (o.kind === 'escalera') {
           var li = levelIndex(o.lv), up = doc.levels[li + 1];
           box.appendChild(propRow('Sube a', valSpan(up ? up.name : 'No hay piso arriba')));
@@ -2354,9 +2441,134 @@
         box.appendChild(propRow('Nombre', ni));
         var mk = levelRooms(), rr = mk ? M3.roomAt(mk, o.p[0], o.p[1]) : null;
         box.appendChild(propRow('Área', valSpan(rr ? U.formatArea(rr.area, units) : 'Fuera de un cuarto cerrado')));
+        box.appendChild(propRow('Posición', xyField(o.p, function (q) { o.p = q; })));
+        break;
+      case 'text':
+        box.appendChild(propRow('Posición', xyField(o.p, function (q) { o.p = q; })));
         break;
       default: break;
     }
+    if (o.type !== 'door' && o.type !== 'window') box.appendChild(moveRow([o]));
+    box.appendChild(el('div', { class: 'hint', text: 'Flechas del teclado: mover un paso del snap · Shift + flecha: paso fino.' }));
+  }
+
+  /* ---------- campos para editar medidas ---------- */
+  function segAng(a, b) { return ((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI) + 360) % 360; }
+  function setLen(o, m) { var u = G.norm(G.sub(o.b, o.a)); o.b = G.add(o.a, G.mul(u, m)); }
+  function setAng(o, a) { var L = G.dist(o.a, o.b), r = a * Math.PI / 180; o.b = [o.a[0] + Math.cos(r) * L, o.a[1] + Math.sin(r) * L]; }
+  /** Medida editable. onSet puede devolver false para rechazar. opts.zero acepta 0; opts.neg acepta negativos; opts.presets [[texto, m]]. */
+  function lenField(value, onSet, opts) {
+    opts = opts || {};
+    var inp = el('input', { type: 'text', value: fmt(value), inputmode: 'text' });
+    inp.addEventListener('change', function () {
+      var m = U.parseLength(inp.value, units);
+      var bad = isNaN(m) || (!opts.neg && m < 0) || (!opts.zero && !opts.neg && m <= 0.002);
+      if (bad) { toast('Medida no válida. Prueba con 12\'6", 3.5m o 150cm.'); inp.value = fmt(value); return; }
+      if (onSet(m) === false) { inp.value = fmt(value); return; }
+      commit();
+    });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
+    if (!opts.presets) return inp;
+    var sel = el('select', { 'aria-label': 'Medidas comunes', class: 'mini-sel' });
+    sel.appendChild(el('option', { value: '', text: '▾' }));
+    opts.presets.forEach(function (p) { sel.appendChild(el('option', { value: String(p[1]), text: typeof p[0] === 'string' && p[0].indexOf('·') < 0 && opts.presets === WALL_PRESETS ? p[0] + ' · ' + fmt(p[1]) : p[0] })); });
+    sel.addEventListener('change', function () { var m = parseFloat(sel.value); if (m > 0 && onSet(m) !== false) commit(); });
+    return el('div', { class: 'field-pair' }, [inp, sel]);
+  }
+  function angField(deg, onSet) {
+    var inp = el('input', { type: 'text', value: (Math.round(deg * 100) / 100) + '°', 'aria-label': 'Ángulo' });
+    inp.addEventListener('change', function () {
+      var v = parseFloat(inp.value);
+      if (isNaN(v)) { toast('Escribe el ángulo en grados.'); inp.value = (Math.round(deg * 100) / 100) + '°'; return; }
+      onSet(v); commit();
+    });
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
+    return inp;
+  }
+  /** Punto editable: X y Y. */
+  function xyField(pt, onSet) {
+    function one(i) {
+      var inp = el('input', { type: 'text', value: fmt(pt[i]), 'aria-label': i ? 'Y' : 'X', placeholder: i ? 'Y' : 'X' });
+      inp.addEventListener('change', function () {
+        var m = U.parseLength(inp.value, units);
+        if (isNaN(m)) { toast('Medida no válida.'); inp.value = fmt(pt[i]); return; }
+        var q = pt.slice(); q[i] = m; onSet(q); commit();
+      });
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
+      return el('label', { class: 'xy-in' }, [el('span', { text: i ? 'Y' : 'X' }), inp]);
+    }
+    return el('div', { class: 'xy' }, [one(0), one(1)]);
+  }
+  /** Mover exacto lo elegido. */
+  function moveRow(list) {
+    var dx = el('input', { type: 'text', placeholder: units === 'ft' ? '→ 2\'6"' : '→ 0.5m', 'aria-label': 'Mover en X' });
+    var dy = el('input', { type: 'text', placeholder: units === 'ft' ? '↑ -1\'' : '↑ -0.3m', 'aria-label': 'Mover en Y' });
+    var go = btn('Mover', function () {
+      var mx = dx.value.trim() ? U.parseLength(dx.value, units) : 0, my = dy.value.trim() ? U.parseLength(dy.value, units) : 0;
+      if (isNaN(mx) || isNaN(my)) { toast('Medida no válida.'); return; }
+      if (!mx && !my) return;
+      list.forEach(function (o) { G.translateObj(o, mx, my); });
+      commit();
+    });
+    [dx, dy].forEach(function (i) { i.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go.click(); } }); });
+    return propRow('Mover', el('div', { class: 'xy' }, [dx, dy, go]));
+  }
+  /** Mueve un extremo de pared y arrastra los extremos de las paredes que estaban pegados ahí. */
+  function moveWallEnd(w, which, q) {
+    var old = w[which].slice(), tol = 1e-4;
+    doc.objects.forEach(function (o) {
+      if (o.type !== 'wall' || o.lv !== w.lv || o === w) return;
+      if (G.dist(o.a, old) < tol) o.a = q.slice();
+      if (G.dist(o.b, old) < tol) o.b = q.slice();
+    });
+    w[which] = q.slice();
+    // las aberturas se quedan dentro de su pared
+    var walls = {};
+    doc.objects.forEach(function (o) { if (o.type === 'wall') walls[o.id] = o; });
+    doc.objects.forEach(function (o) {
+      if (o.type !== 'door' && o.type !== 'window') return;
+      var wl = walls[o.wall]; if (!wl) return;
+      var L = G.dist(wl.a, wl.b);
+      if (o.w > L) o.w = Math.max(0.3, L);
+      o.pos = G.clamp(o.pos, o.w / 2, L - o.w / 2);
+    });
+  }
+  /** Cambiar el largo de una pared estira el cuarto: la pared que llega a su extremo se corre entera
+   *  y las paredes que salen del otro lado de esa se alargan. Así un cuarto rectangular sigue rectangular. */
+  function stretchWall(w, q) {
+    var old = w.b.slice(), d = G.sub(q, old), tol = 1e-4, u = G.norm(G.sub(w.b, w.a));
+    var moved = {};
+    doc.objects.forEach(function (o) {
+      if (o.type !== 'wall' || o.lv !== w.lv || o === w) return;
+      var atA = G.dist(o.a, old) < tol, atB = G.dist(o.b, old) < tol;
+      if (!atA && !atB) return;
+      var v = G.norm(G.sub(o.b, o.a));
+      if (Math.abs(u[0] * v[1] - u[1] * v[0]) < 0.05) { if (atA) o.a = q.slice(); else o.b = q.slice(); return; }   // sigue la misma línea
+      var far = atA ? o.b.slice() : o.a.slice();
+      o.a = G.add(o.a, d); o.b = G.add(o.b, d); moved[o.id] = true;
+      doc.objects.forEach(function (x) {
+        if (x.type !== 'wall' || x.lv !== w.lv || x === w || x === o || moved[x.id]) return;
+        if (G.dist(x.a, far) < tol) x.a = G.add(x.a, d);
+        if (G.dist(x.b, far) < tol) x.b = G.add(x.b, d);
+      });
+    });
+    moveWallEnd(w, 'b', q);
+  }
+  /** Flechas: mueve lo elegido un paso; puertas y ventanas corren por su pared. */
+  function nudge(dx, dy) {
+    var list = selectedObjects().filter(function (o) { return !isLocked(o); });
+    if (!list.length) return false;
+    var map = idMap();
+    list.forEach(function (o) {
+      if (o.type === 'door' || o.type === 'window') {
+        var wl = map[o.wall]; if (!wl) return;
+        var u = G.norm(G.sub(wl.b, wl.a)), L = G.dist(wl.a, wl.b), along = dx * u[0] + dy * u[1];
+        if (Math.abs(along) < 1e-9) along = (Math.abs(u[0]) >= Math.abs(u[1]) ? dy * u[1] : dx * u[0]) || (dx + dy);
+        o.pos = G.clamp(o.pos + along, o.w / 2, L - o.w / 2);
+      } else G.translateObj(o, dx, dy);
+    });
+    commit();
+    return true;
   }
 
   function uiSync() {
