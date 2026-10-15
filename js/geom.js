@@ -130,6 +130,7 @@
       case 'wall': pts = [o.a, o.b]; break;
       case 'furn': pts = F.corners(o); break;
       case 'room': pts = [[o.p[0] - 0.2, o.p[1] - 0.2], [o.p[0] + 0.2, o.p[1] + 0.2]]; break;
+      case 'text': var tb = textBox(o); pts = [[tb.x0, tb.y0], [tb.x1, tb.y1]]; break;
       case 'door': case 'window':
         var w = byId && byId[o.wall];
         if (!w) return null;
@@ -145,6 +146,12 @@
     });
     var pad = o.type === 'wall' ? o.t / 2 : 0;
     return { minx: minx - pad, miny: miny - pad, maxx: maxx + pad, maxy: maxy + pad };
+  }
+
+  /** Caja aproximada de un texto: o.p es la esquina de abajo a la izquierda, o.h la altura de letra (metros). */
+  function textBox(o) {
+    var w = Math.max(1, String(o.text || '').length) * o.h * 0.68;
+    return { x0: o.p[0], y0: o.p[1], x1: o.p[0] + w, y1: o.p[1] + o.h };
   }
 
   /** Distancia del punto p al objeto (0 si está encima). Sirve para elegir con el dedo o el mouse. */
@@ -165,6 +172,9 @@
       case 'circle': return Math.abs(dist(p, o.c) - o.r);
       case 'furn': return F.distTo(o, p[0], p[1]);
       case 'room': return Math.max(0, dist(p, o.p) - 0.25);
+      case 'text':
+        var b = textBox(o);
+        return Math.hypot(Math.max(b.x0 - p[0], 0, p[0] - b.x1), Math.max(b.y0 - p[1], 0, p[1] - b.y1));
       case 'wall': return Math.max(0, segDist(p, o.a, o.b).d - o.t / 2);
       case 'door': case 'window':
         var w = byId && byId[o.wall];
@@ -243,7 +253,7 @@
       case 'line': case 'rect': case 'wall': case 'dim': mv(o.a); mv(o.b); break;
       case 'polyline': o.pts.forEach(mv); break;
       case 'circle': mv(o.c); break;
-      case 'furn': case 'room': mv(o.p); break;
+      case 'furn': case 'room': case 'text': mv(o.p); break;
       default: break; // las aberturas se mueven con su pared
     }
   }
@@ -262,7 +272,7 @@
       case 'polyline': o.pts.forEach(rt); break;
       case 'circle': rt(o.c); break;
       case 'furn': rt(o.p); o.ang = (((o.ang || 0) + ang * 180 / Math.PI) % 360 + 360) % 360; break;
-      case 'room': rt(o.p); break;
+      case 'room': case 'text': rt(o.p); break;
       case 'rect':
         o.type = 'polyline';
         o.pts = rectCorners(o).map(function (p) { return rotatePoint(p, c, ang); });
@@ -280,7 +290,7 @@
     wallInfo: wallInfo, openingRange: openingRange, solidRanges: solidRanges,
     openingGeom: openingGeom, placeOnWall: placeOnWall,
     polyLength: polyLength, polyArea: polyArea, dimGeom: dimGeom,
-    bboxOf: bboxOf, distToObject: distToObject,
+    bboxOf: bboxOf, distToObject: distToObject, textBox: textBox,
     snapPointsOf: snapPointsOf, findSnap: findSnap, orthoPoint: orthoPoint,
     translateObj: translateObj, rotatePoint: rotatePoint, rotateObj: rotateObj
   };
