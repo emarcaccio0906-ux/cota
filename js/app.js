@@ -38,12 +38,19 @@
   var PEN_TYPES = ['line', 'polyline', 'rect', 'circle'];        // objetos que usan tipo de línea y mina
   var TYPE_NAMES = { line: 'Línea', polyline: 'Polilínea', rect: 'Rectángulo', circle: 'Círculo', wall: 'Pared', door: 'Puerta', window: 'Ventana', dim: 'Cota', furn: 'Mueble', room: 'Cuarto', text: 'Texto' };
   // modo clase: hoja de papel, escala de escalímetro, minas y escuadras
-  var PAPER_DEFAULT = { sheet: '18x24', orient: 'land', scale: 'a0.25', gridMode: 'paper', gridIn: 0.25, iso: false, snapDiv: 1,
+  var PAPER_DEFAULT = { sheet: '18x24', orient: 'land', scale: 'a0.25', gridMode: 'paper', gridIn: 0.25, snapDiv: 1,
+    gridType: 'sq', gridInY: 0, isoIn: 0, isoAng: 30, realX: 0.3048, realY: 0, isoReal: 0, major: 4,
+    gridStyle: 'lines', gridColor: 'azul', gridStrength: 'media', gridAt: 'centro',
     paperLen: true, printGrid: false, student: '', course: '', sheetNo: 'A-1', origin: [0, 0] };
   var GRID_PAPER_FT = [['1/16"', 1 / 16], ['1/8"', 1 / 8], ['1/4"', 1 / 4], ['1/2"', 1 / 2], ['1"', 1], ['1/10" (ingeniería)', 0.1]];
   var GRID_PAPER_M = [['1 mm', 1 / 25.4], ['2 mm', 2 / 25.4], ['5 mm', 5 / 25.4], ['1 cm', 10 / 25.4]];
   var TEXT_SIZES = [['3/32" (notas)', 3 / 32], ['1/8" (normal)', 1 / 8], ['3/16" (subtítulos)', 3 / 16], ['1/4" (títulos)', 1 / 4], ['1/2" (grande)', 1 / 2]];
   var INST_ORDER = ['tsq', 't3060', 't45', 'ruler'];
+  var GRID_TYPES = [['En blanco', 'none', 'Hoja lisa, sin cuadrícula'], ['Cuadrada', 'sq', 'Líneas horizontales y verticales'], ['Isométrica', 'iso', 'Líneas a 30° y verticales'], ['Las dos', 'both', 'Cuadrada con la isométrica encima']];
+  var uiLevel = 'simple', skipHome = false;
+  var profile = { name: '', course: '', school: '' };
+  var GRID_COLORS = { azul: [70, 140, 215], gris: [95, 105, 120], verde: [45, 150, 95], sepia: [165, 120, 70], rojo: [210, 80, 70] };
+  var GRID_STRENGTH = { suave: [0.09, 0.2], media: [0.17, 0.36], fuerte: [0.3, 0.6] };
   var PAPER_COLORS = {
     canvas: '#fbfaf6', 'grid-minor': 'rgba(70, 140, 215, 0.17)', 'grid-major': 'rgba(70, 140, 215, 0.36)', 'axis-x': 'rgba(200, 50, 50, 0.5)', 'axis-y': 'rgba(30, 140, 70, 0.5)',
     ink: '#2a2e35', sel: '#0a7cc2', accent: '#d9480f', panel: '#ffffff', text: '#1b2536', muted: '#5d6b80', line: '#d3dae4'
@@ -185,11 +192,7 @@
   }
   /** Espaciado visible de la cuadrícula. Si es fijo y se aleja el zoom, se agrupa para que no se amontone. */
   function gridStep() {
-    if (clase()) {
-      var base = paperGridBase(), st = base;
-      while (st * view.scale < 6 && st < base * 1e5) st *= gridCfg.major;
-      return st;
-    }
+    if (clase()) { var sp = gridSpec(); return (sp.type === 'iso' ? sp.si : sp.sx) * sp.f; }
     if (!gridCfg.step) return autoStep();
     var mult = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
     for (var i = 0; i < mult.length; i++) if (gridCfg.step * mult[i] * view.scale >= 8) return gridCfg.step * mult[i];
@@ -215,11 +218,37 @@
   function paperU() { return D.unitOf(curScale().k); }                 // metros reales por pulgada de papel
   function paperPx() { return paperU() * view.scale; }                 // píxeles por pulgada de papel
   function sheetLay() { return D.sheetLayout(doc.paper, curScale().k); }
-  /** Espacio entre líneas de la cuadrícula en metros reales. */
-  function paperGridBase() {
-    if (doc.paper.gridMode === 'real' && gridCfg.step > 0) return gridCfg.step;
-    return doc.paper.gridIn * paperU();
+  /** Espacio entre líneas de la cuadrícula en metros reales (horizontal). */
+  function paperGridBase() { var sp = gridSpec(); return sp.type === 'iso' ? sp.si : sp.sx; }
+  /** Cuadrícula de la hoja en metros reales: sx, sy (cuadrada), si y ang (isométrica), origen y agrupado por zoom (f). */
+  function gridSpec() {
+    var q = doc.paper, u = paperU(), real = q.gridMode === 'real';
+    var sx = real ? q.realX : q.gridIn * u;
+    var sy = real ? (q.realY || q.realX) : (q.gridInY || q.gridIn) * u;
+    var si = real ? (q.isoReal || q.realX) : (q.isoIn || q.gridIn) * u;
+    var off = [0, 0];
+    if (q.gridAt === 'marco') { var fr = sheetLay().frame; off = [fr.x0, fr.y0]; }
+    var t = q.gridType, ang = q.isoAng || 30;
+    var small = Math.min(t === 'iso' ? Infinity : Math.min(sx, sy), (t === 'iso' || t === 'both') ? si * Math.cos(ang * Math.PI / 180) : Infinity);
+    var f = 1, grp = q.major > 1 ? q.major : 4, need = q.gridStyle === 'dots' ? 9 : 6;
+    while (small * f * view.scale < need && f < 1e7) f *= grp;
+    return { type: t, sx: sx, sy: sy, si: si, ang: ang, off: off, f: f };
   }
+  /** Punto de la cuadrícula de la hoja más cercano a p (respeta el paso del snap). */
+  function paperSnap(p) {
+    var sp = gridSpec(), div = doc.paper.snapDiv || 1, best = null;
+    var q = [p[0] - sp.off[0], p[1] - sp.off[1]];
+    if (sp.type !== 'iso') {
+      var gx = sp.sx * sp.f / div, gy = sp.sy * sp.f / div;
+      best = [Math.round(q[0] / gx) * gx, Math.round(q[1] / gy) * gy];
+    }
+    if (sp.type === 'iso' || sp.type === 'both') {
+      var ip = D.isoSnap(q, sp.si * sp.f / div, sp.ang);
+      if (!best || G.dist(ip, q) < G.dist(best, q)) best = ip;
+    }
+    return [best[0] + sp.off[0], best[1] + sp.off[1]];
+  }
+  function isoOn() { return clase() && (doc.paper.gridType === 'iso' || doc.paper.gridType === 'both'); }
   /** Cuánto mide en el papel una medida real. */
   function paperLenStr(m) {
     var onPaper = m * curScale().k;
@@ -390,8 +419,19 @@
     if (q.orient === 'port') out.orient = 'port';
     if (D.scaleById(q.scale)) out.scale = q.scale;
     if (q.gridMode === 'real') out.gridMode = 'real';
-    if (isNum(q.gridIn) && q.gridIn > 0.01 && q.gridIn <= 2) out.gridIn = q.gridIn;
-    out.iso = q.iso === true;
+    if (isNum(q.gridIn) && q.gridIn > 0.01 && q.gridIn <= 4) out.gridIn = q.gridIn;
+    if (['none', 'sq', 'iso', 'both'].indexOf(q.gridType) >= 0) out.gridType = q.gridType;
+    else if (q.iso === true) out.gridType = 'iso';                                   // versión anterior
+    ['gridInY', 'isoIn'].forEach(function (k) { if (isNum(q[k]) && (q[k] === 0 || (q[k] > 0.01 && q[k] <= 4))) out[k] = q[k]; });
+    ['realX', 'realY', 'isoReal'].forEach(function (k) { if (isNum(q[k]) && (q[k] === 0 || (q[k] > 0.001 && q[k] < 100))) out[k] = q[k]; });
+    if (!(out.realX > 0)) out.realX = 0.3048;
+    if (q.gridMode === 'real' && !isNum(q.realX) && gridCfg.step > 0) out.realX = gridCfg.step;   // versión anterior
+    if (isNum(q.isoAng) && q.isoAng >= 5 && q.isoAng <= 85) out.isoAng = q.isoAng;
+    if ([0, 2, 4, 5, 8, 10].indexOf(q.major) >= 0) out.major = q.major;
+    if (q.gridStyle === 'dots') out.gridStyle = 'dots';
+    if (GRID_COLORS[q.gridColor]) out.gridColor = q.gridColor;
+    if (GRID_STRENGTH[q.gridStrength]) out.gridStrength = q.gridStrength;
+    if (q.gridAt === 'marco') out.gridAt = 'marco';
     if ([1, 2, 4].indexOf(q.snapDiv) >= 0) out.snapDiv = q.snapDiv;
     out.paperLen = q.paperLen !== false;
     out.printGrid = q.printGrid === true;
@@ -441,7 +481,7 @@
     try {
       localStorage.setItem(STORE_PROJECT + curId, snapshot());
       var e = projectById(curId);
-      if (e) { e.updated = Date.now(); e.thumb = thumbOf(doc); saveIndex(); }
+      if (e) { e.updated = Date.now(); e.ws = doc.ws; e.thumb = thumbOf(doc); saveIndex(); }
     } catch (err) { toast('No hay espacio para guardar en este navegador. Descarga el plano con Guardar.'); }
   }
   function savePrefs() {
@@ -449,7 +489,7 @@
       localStorage.setItem(STORE_PREFS, JSON.stringify({
         units: units, theme: theme, snapOn: snapOn, orthoOn: orthoOn, settings: settings, grid: gridCfg, polar: polarInc,
         precision: precision, s3: s3, cur: curId, pro: pro, areas: showAreas, furn: { kind: furnKind, align: furnAlign },
-        insts: insts, instOpen: instOpen, pen: pen, textIn: textIn
+        insts: insts, instOpen: instOpen, pen: pen, textIn: textIn, uiLevel: uiLevel, profile: profile, skipHome: skipHome
       }));
     } catch (e) { /* nada */ }
   }
@@ -462,7 +502,7 @@
         if (typeof p.snapOn === 'boolean') snapOn = p.snapOn;
         if (typeof p.orthoOn === 'boolean') orthoOn = p.orthoOn;
         if (p.settings && isNum(p.settings.wallT) && isNum(p.settings.doorW) && isNum(p.settings.winW)) settings = p.settings;
-        if (p.grid && typeof p.grid.show === 'boolean' && isNum(p.grid.step) && p.grid.step >= 0 && isNum(p.grid.snapStep) && p.grid.snapStep >= 0 && [2, 4, 5, 8, 10].indexOf(p.grid.major) >= 0) gridCfg = p.grid;
+        if (p.grid && typeof p.grid.show === 'boolean' && isNum(p.grid.step) && p.grid.step >= 0 && isNum(p.grid.snapStep) && p.grid.snapStep >= 0 && [0, 2, 4, 5, 8, 10].indexOf(p.grid.major) >= 0) gridCfg = p.grid;
         if ([0, 15, 30, 45, 90].indexOf(p.polar) >= 0) polarInc = p.polar;
         if (p.precision && [1, 2, 4, 8, 16].indexOf(p.precision.ft) >= 0 && [0, 1, 2, 3].indexOf(p.precision.m) >= 0) precision = p.precision;
         var q = p.s3;
@@ -487,6 +527,9 @@
         if (typeof p.instOpen === 'boolean') instOpen = p.instOpen;
         if (p.pen && D.penById(p.pen.type) && D.leadById(p.pen.lead)) pen = { type: p.pen.type, lead: p.pen.lead };
         if (isNum(p.textIn) && p.textIn > 0.03 && p.textIn < 1) textIn = p.textIn;
+        if (p.uiLevel === 'avanzado') uiLevel = 'avanzado';
+        if (p.profile && typeof p.profile === 'object') ['name', 'course', 'school'].forEach(function (k) { if (typeof p.profile[k] === 'string') profile[k] = p.profile[k].slice(0, 60); });
+        if (p.skipHome === true) skipHome = true;
         return true;
       }
     } catch (e) { /* nada */ }
@@ -565,8 +608,8 @@
 
   function drawGrid() {
     if (!gridCfg.show) return;
-    if (clase() && doc.paper.iso) { drawIsoGrid(); return; }
-    var step = gridStep();
+    if (clase()) { drawPaperGrid(); return; }
+    var step = gridStep(), mj = gridCfg.major;
     var a = s2w(0, H), b = s2w(W, 0);
     var i0 = Math.floor(a[0] / step), i1 = Math.ceil(b[0] / step);
     var j0 = Math.floor(a[1] / step), j1 = Math.ceil(b[1] / step);
@@ -574,12 +617,12 @@
     var i, j, s, path;
     for (i = i0; i <= i1; i++) {
       s = Math.round(w2s([i * step, 0])[0]) + 0.5;
-      path = (i % gridCfg.major === 0) ? major : minor;
+      path = (mj > 0 && i % mj === 0) ? major : minor;
       path.moveTo(s, 0); path.lineTo(s, H);
     }
     for (j = j0; j <= j1; j++) {
       s = Math.round(w2s([0, j * step])[1]) + 0.5;
-      path = (j % gridCfg.major === 0) ? major : minor;
+      path = (mj > 0 && j % mj === 0) ? major : minor;
       path.moveTo(0, s); path.lineTo(W, s);
     }
     ctx.lineWidth = 1;
@@ -587,23 +630,55 @@
     ctx.strokeStyle = colors['grid-major']; ctx.stroke(major);
   }
 
-  /** Red isométrica: verticales y líneas a 30° y 150°, con triángulos de lado = el cuadro elegido. */
-  function drawIsoGrid() {
-    var s = gridStep(), bx = s * Math.cos(Math.PI / 6), t = Math.tan(Math.PI / 6);
-    var a = s2w(0, H), b = s2w(W, 0), minor = new Path2D(), major = new Path2D(), mj = gridCfg.major;
-    function seg(path, p, q) { var P = w2s(p), Q = w2s(q); path.moveTo(P[0], P[1]); path.lineTo(Q[0], Q[1]); }
-    var i, c;
-    for (i = Math.floor(a[0] / bx); i <= Math.ceil(b[0] / bx); i++) seg(i % mj === 0 ? major : minor, [i * bx, a[1]], [i * bx, b[1]]);
-    // y = x·tan30 + c  (c múltiplo de s)  y  y = -x·tan30 + c
-    var cs = [a[1] - b[0] * t, b[1] - a[0] * t, a[1] - a[0] * t, b[1] - b[0] * t];
-    for (c = Math.floor(Math.min.apply(null, cs) / s); c <= Math.ceil(Math.max.apply(null, cs) / s); c++)
-      seg(c % mj === 0 ? major : minor, [a[0], a[0] * t + c * s], [b[0], b[0] * t + c * s]);
-    cs = [a[1] + a[0] * t, b[1] + b[0] * t, a[1] + b[0] * t, b[1] + a[0] * t];
-    for (c = Math.floor(Math.min.apply(null, cs) / s); c <= Math.ceil(Math.max.apply(null, cs) / s); c++)
-      seg(c % mj === 0 ? major : minor, [a[0], -a[0] * t + c * s], [b[0], -b[0] * t + c * s]);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = colors['grid-minor']; ctx.stroke(minor);
-    ctx.strokeStyle = colors['grid-major']; ctx.stroke(major);
+  /** Cuadrícula de la hoja: cuadrada (con ancho y alto propios), isométrica a cualquier ángulo, o las dos; en líneas o puntos. */
+  function drawPaperGrid() {
+    var q = doc.paper, sp = gridSpec();
+    if (sp.type === 'none') return;
+    var rgb = GRID_COLORS[q.gridColor] || GRID_COLORS.azul, al = GRID_STRENGTH[q.gridStrength] || GRID_STRENGTH.media;
+    var mj = q.major > 0 ? q.major : 0, dots = q.gridStyle === 'dots', kd = dots ? 2.4 : 1;
+    var colMinor = 'rgba(' + rgb.join(',') + ',' + Math.min(1, al[0] * kd) + ')', colMajor = 'rgba(' + rgb.join(',') + ',' + Math.min(1, al[1] * kd) + ')';
+    var A = s2w(0, H), B = s2w(W, 0), ox = sp.off[0], oy = sp.off[1];
+    var a = [A[0] - ox, A[1] - oy], b = [B[0] - ox, B[1] - oy];
+    var minor = new Path2D(), major = new Path2D();
+    function isMaj(n) { return mj > 0 && ((n % mj) + mj) % mj === 0; }
+    function seg(path, p, r) { var P = w2s([p[0] + ox, p[1] + oy]), Q = w2s([r[0] + ox, r[1] + oy]); path.moveTo(P[0], P[1]); path.lineTo(Q[0], Q[1]); }
+    function dot(path, x, y, big) { var P = w2s([x + ox, y + oy]); path.moveTo(P[0] + (big ? 1.6 : 1), P[1]); path.arc(P[0], P[1], big ? 1.6 : 1, 0, Math.PI * 2); }
+    var i, j, c;
+    if (sp.type === 'sq' || sp.type === 'both') {
+      var gx = sp.sx * sp.f, gy = sp.sy * sp.f;
+      var i0 = Math.floor(a[0] / gx), i1 = Math.ceil(b[0] / gx), j0 = Math.floor(a[1] / gy), j1 = Math.ceil(b[1] / gy);
+      if (dots) {
+        for (i = i0; i <= i1; i++) for (j = j0; j <= j1; j++) { var big = isMaj(i) && isMaj(j); dot(big ? major : minor, i * gx, j * gy, big); }
+      } else {
+        for (i = i0; i <= i1; i++) seg(isMaj(i) ? major : minor, [i * gx, a[1]], [i * gx, b[1]]);
+        for (j = j0; j <= j1; j++) seg(isMaj(j) ? major : minor, [a[0], j * gy], [b[0], j * gy]);
+      }
+    }
+    if (sp.type === 'iso' || sp.type === 'both') {
+      var s = sp.si * sp.f, ra = sp.ang * Math.PI / 180, bx = s * Math.cos(ra), rise = s * Math.sin(ra), v = 2 * rise, t = Math.tan(ra);
+      var isoMinor = sp.type === 'both' ? new Path2D() : minor, isoMajor = sp.type === 'both' ? new Path2D() : major;
+      if (dots) {
+        for (i = Math.floor(a[0] / bx); i <= Math.ceil(b[0] / bx); i++) {
+          for (j = Math.floor((a[1] - i * rise) / v) - 1; j <= Math.ceil((b[1] - i * rise) / v) + 1; j++) dot(isMaj(i) && isMaj(j) ? isoMajor : isoMinor, i * bx, i * rise + j * v, isMaj(i) && isMaj(j));
+        }
+      } else {
+        for (i = Math.floor(a[0] / bx); i <= Math.ceil(b[0] / bx); i++) seg(isMaj(i) ? isoMajor : isoMinor, [i * bx, a[1]], [i * bx, b[1]]);
+        var cs = [a[1] - b[0] * t, b[1] - a[0] * t, a[1] - a[0] * t, b[1] - b[0] * t];
+        for (c = Math.floor(Math.min.apply(null, cs) / v); c <= Math.ceil(Math.max.apply(null, cs) / v); c++) seg(isMaj(c) ? isoMajor : isoMinor, [a[0], a[0] * t + c * v], [b[0], b[0] * t + c * v]);
+        cs = [a[1] + a[0] * t, b[1] + b[0] * t, a[1] + b[0] * t, b[1] + a[0] * t];
+        for (c = Math.floor(Math.min.apply(null, cs) / v); c <= Math.ceil(Math.max.apply(null, cs) / v); c++) seg(isMaj(c) ? isoMajor : isoMinor, [a[0], -a[0] * t + c * v], [b[0], -b[0] * t + c * v]);
+      }
+      if (sp.type === 'both') {
+        // la isométrica encima, un poco más suave para no confundirse con la cuadrada
+        ctx.save(); ctx.globalAlpha = 0.75; ctx.lineWidth = 1;
+        if (dots) { ctx.fillStyle = colMinor; ctx.fill(isoMinor); ctx.fillStyle = colMajor; ctx.fill(isoMajor); }
+        else { ctx.setLineDash([3, 3]); ctx.strokeStyle = colMinor; ctx.stroke(isoMinor); ctx.strokeStyle = colMajor; ctx.stroke(isoMajor); }
+        ctx.restore();
+      }
+    }
+    ctx.lineWidth = 1; ctx.setLineDash([]);
+    if (dots) { ctx.fillStyle = colMinor; ctx.fill(minor); ctx.fillStyle = colMajor; ctx.fill(major); }
+    else { ctx.strokeStyle = colMinor; ctx.stroke(minor); ctx.strokeStyle = colMajor; ctx.stroke(major); }
   }
 
   /* ---------- hoja, cajetín y escuadras ---------- */
@@ -635,7 +710,7 @@
     var e = projectById(curId), name = (e ? e.name : 'Plano').toUpperCase();
     var date = new Date().toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' });
     var rows = [
-      ['PROYECTO', name, 1 / 8], ['DIBUJÓ', (q.student || '').toUpperCase(), 1 / 8], ['CURSO', (q.course || '').toUpperCase(), 1 / 8],
+      ['PROYECTO', name, 1 / 8], ['DIBUJÓ', (q.student || profile.name || '').toUpperCase(), 1 / 8], ['CURSO', (q.course || profile.course || '').toUpperCase(), 1 / 8],
       ['FECHA', date, 1 / 8], ['ESCALA', curScale().label.toUpperCase(), 1 / 8], ['LÁMINA', q.sheetNo || 'A-1', 3 / 8]
     ];
     var port = q.orient === 'port';
@@ -1212,10 +1287,10 @@
   function updateCursor(sx, sy, shift) {
     mouse.sx = sx; mouse.sy = sy;
     mouse.raw = s2w(sx, sy);
-    var s, iso = clase() && doc.paper.iso;
-    if (snapOn) s = G.findSnap(mouse.raw, snapTargets(), { tol: SNAP_PX / view.scale, grid: snapStep(), useGrid: !iso });
+    var s, iso = isoOn(), isoD = D.isoDirs(doc.paper.isoAng);
+    if (snapOn) s = G.findSnap(mouse.raw, snapTargets(), { tol: SNAP_PX / view.scale, grid: snapStep(), useGrid: !clase() });
     else s = { p: mouse.raw.slice(), kind: 'free' };
-    if (snapOn && iso && s.kind === 'free') s = { p: D.isoSnap(mouse.raw, snapStep()), kind: 'grid' };
+    if (snapOn && clase() && s.kind === 'free') s = { p: paperSnap(mouse.raw), kind: 'grid' };
     var drawTool = DRAW_TOOLS.indexOf(tool) >= 0 && tool !== 'door' && tool !== 'window';
     // canto de una escuadra: el punto se pega al borde, como el lápiz contra la regla
     if (drawTool && s.kind !== 'end' && s.kind !== 'mid') {
@@ -1227,17 +1302,17 @@
     var ortho = orthoOn !== !!shift;
     var lineTool = tool === 'line' || tool === 'wall' || tool === 'polyline';
     mouse.polar = null; mouse.polarSrc = '';
-    var guideDirs = (iso ? D.ISO_DIRS.slice() : []).concat(D.edgeDirs(instEdges()));
+    var guideDirs = (iso ? isoD.slice() : []).concat(D.edgeDirs(instEdges()));
     var cd = null;
     if (!ortho && last && lineTool && s.kind !== 'end' && s.kind !== 'mid' && guideDirs.length) cd = D.constrainDir(last, mouse.raw, guideDirs, 4);
     if (s.kind === 'edge') {
       /* ya está sobre el canto */
     } else if (ortho && last && lineTool && s.kind !== 'end' && s.kind !== 'mid') {
-      p = iso ? D.constrainDir(last, p, D.ISO_DIRS, null).p : G.orthoPoint(last, p);
+      p = iso && doc.paper.gridType === 'iso' ? D.constrainDir(last, p, isoD, null).p : G.orthoPoint(last, p);
     } else if (cd) {
       var stp = snapOn ? snapStep() : 0, dl = stp > 0 ? Math.round(cd.len / stp) * stp : cd.len, ra = cd.ang * Math.PI / 180;
       p = [last[0] + Math.cos(ra) * dl, last[1] + Math.sin(ra) * dl];
-      mouse.polar = cd.ang; mouse.polarSrc = iso && D.ISO_DIRS.some(function (a) { return Math.abs((cd.ang % 180) - a) < 0.01; }) ? 'isométrico' : 'escuadra';
+      mouse.polar = cd.ang; mouse.polarSrc = iso && isoD.some(function (a) { return Math.abs((cd.ang % 180) - a) < 0.01; }) ? 'isométrico' : 'escuadra';
     } else if (polarInc > 0 && last && lineTool && s.kind !== 'end' && s.kind !== 'mid') {
       // ángulo polar: se engancha cuando el cursor está a menos de 6° de un múltiplo del ángulo elegido
       var v = G.sub(mouse.raw, last), L = G.len(v);
@@ -2086,8 +2161,9 @@
   }
 
   function renderGridCfg() {
-    var box = $('gridcfg');
+    var box = $('gridcfg'), adv = uiLevel === 'avanzado';
     box.textContent = '';
+    box.appendChild(levelSwitch());
     box.appendChild(propRow('Espaciado', stepSelect(gridCfg.step, 'Automático', 'Espaciado de la cuadrícula', function (v) { gridCfg.step = v; cfgChanged(); })));
     var other = el('input', { type: 'text', placeholder: units === 'ft' ? 'Otro: 8" o 2\'6"' : 'Otro: 25cm o 0.4', 'aria-label': 'Otro espaciado' });
     other.addEventListener('change', function () {
@@ -2097,11 +2173,12 @@
       gridCfg.step = m; cfgChanged();
     });
     other.addEventListener('keydown', function (e) { if (e.key === 'Enter') other.blur(); });
-    box.appendChild(propRow('Otro', other));
-    box.appendChild(propRow('Líneas gruesas', selectEl([['Cada 2', 2], ['Cada 4', 4], ['Cada 5', 5], ['Cada 8', 8], ['Cada 10', 10]], gridCfg.major, function (v) { gridCfg.major = v; cfgChanged(); }, 'Líneas gruesas')));
+    if (adv) box.appendChild(propRow('Otro', other));
+    box.appendChild(propRow('Áreas', checkRow(showAreas, function (v) { showAreas = v; savePrefs(); requestRender(); renderProps(); }, 'Mostrar el área de cada cuarto')));
+    if (!adv) return;
+    box.appendChild(propRow('Líneas gruesas', selectEl([['Sin líneas gruesas', 0], ['Cada 2', 2], ['Cada 4', 4], ['Cada 5', 5], ['Cada 8', 8], ['Cada 10', 10]], gridCfg.major, function (v) { gridCfg.major = v; cfgChanged(); }, 'Líneas gruesas')));
     box.appendChild(propRow('Paso del snap', stepSelect(gridCfg.snapStep, 'Igual a la cuadrícula', 'Paso del snap', function (v) { gridCfg.snapStep = v; cfgChanged(); })));
     box.appendChild(propRow('Ángulo polar', selectEl([['Apagado', 0], ['15°', 15], ['30°', 30], ['45°', 45], ['90°', 90]], polarInc, function (v) { polarInc = v; cfgChanged(); }, 'Ángulo polar')));
-    box.appendChild(propRow('Áreas', checkRow(showAreas, function (v) { showAreas = v; savePrefs(); requestRender(); renderProps(); }, 'Mostrar el área de cada cuarto')));
     var precOpts = units === 'ft'
       ? [['1"', 1], ['1/2"', 2], ['1/4"', 4], ['1/8"', 8], ['1/16"', 16]]
       : [['Automática', 0], ['0.1 m', 1], ['0.01 m (cm)', 2], ['0.001 m (mm)', 3]];
@@ -2118,79 +2195,153 @@
     var box = $('papercfg');
     box.textContent = '';
     if (!clase()) return;
-    var q = doc.paper, sc = curScale();
-    var sheetSel = el('select', { 'aria-label': 'Tamaño de la hoja' });
-    Object.keys(D.SHEETS).forEach(function (k) { var op = el('option', { value: k, text: D.SHEETS[k].name }); if (k === q.sheet) op.selected = true; sheetSel.appendChild(op); });
-    sheetSel.addEventListener('change', function () { q.sheet = sheetSel.value; resetInstsIfOff(); paperChanged(); fitView(); });
-    box.appendChild(propRow('Hoja', sheetSel));
-    var orSel = el('select', { 'aria-label': 'Orientación' });
-    [['land', 'Horizontal'], ['port', 'Vertical']].forEach(function (o) { var op = el('option', { value: o[0], text: o[1] }); if (o[0] === q.orient) op.selected = true; orSel.appendChild(op); });
-    orSel.addEventListener('change', function () { q.orient = orSel.value; resetInstsIfOff(); paperChanged(); fitView(); });
-    box.appendChild(propRow('Orientación', orSel));
-    var uSel = el('select', { 'aria-label': 'Sistema de medidas' });
-    [['ft', 'Imperial (pies y pulgadas)'], ['m', 'Métrico (metros)']].forEach(function (o) { var op = el('option', { value: o[0], text: o[1] }); if (o[0] === units) op.selected = true; uSel.appendChild(op); });
-    uSel.addEventListener('change', function () { setUnits(uSel.value); });
-    box.appendChild(propRow('Medidas', uSel));
+    var q = doc.paper, sc = curScale(), adv = uiLevel === 'avanzado';
+    box.appendChild(levelSwitch());
 
-    var scSel = el('select', { 'aria-label': 'Escala' });
-    (units === 'm' ? D.SCALES_M : D.SCALES_FT).forEach(function (x) { var op = el('option', { value: x.id, text: x.label }); if (x.id === sc.id) op.selected = true; scSel.appendChild(op); });
-    scSel.addEventListener('change', function () { var keep = view.scale / paperU(); q.scale = scSel.value; view.scale = G.clamp(keep * paperU(), MIN_SCALE, MAX_SCALE); paperChanged(); });
-    box.appendChild(propRow('Escala', scSel));
+    function sel(label, opts, value, onSet) {
+      var e = el('select', { 'aria-label': label });
+      opts.forEach(function (o) {
+        if (o.group) { var g = el('optgroup', { label: o.group }); o.items.forEach(function (it) { var op = el('option', { value: String(it[1]), text: it[0] }); if (String(it[1]) === String(value)) op.selected = true; g.appendChild(op); }); e.appendChild(g); return; }
+        var op = el('option', { value: String(o[1]), text: o[0] }); if (String(o[1]) === String(value)) op.selected = true; e.appendChild(op);
+      });
+      e.addEventListener('change', function () { onSet(e.value); });
+      return e;
+    }
+    function head(t) { box.appendChild(el('div', { class: 'sub-head', text: t })); }
+
+    head('Hoja');
+    box.appendChild(propRow('Tamaño', sel('Tamaño de la hoja', Object.keys(D.SHEETS).map(function (k) { return [D.SHEETS[k].name, k]; }), q.sheet,
+      function (v) { q.sheet = v; resetInstsIfOff(); paperChanged(); fitView(); })));
+    box.appendChild(propRow('Orientación', sel('Orientación', [['Horizontal', 'land'], ['Vertical', 'port']], q.orient,
+      function (v) { q.orient = v; resetInstsIfOff(); paperChanged(); fitView(); })));
+    box.appendChild(propRow('Medidas', sel('Sistema de medidas', [['Imperial (pies y pulgadas)', 'ft'], ['Métrico (metros)', 'm']], units, setUnits)));
+    box.appendChild(propRow('Escala', sel('Escala', (units === 'm' ? D.SCALES_M : D.SCALES_FT).map(function (x) { return [x.label, x.id]; }), sc.id, function (v) {
+      var keep = view.scale / paperU(); q.scale = v; view.scale = G.clamp(keep * paperU(), MIN_SCALE, MAX_SCALE); paperChanged();
+    })));
     var sheetReal = D.sheetSize(q);
     box.appendChild(el('div', { class: 'hint', text: (sc.use ? sc.use + '. ' : '') + 'La hoja entera mide ' + fmt(sheetReal.w * paperU()) + ' × ' + fmt(sheetReal.h * paperU()) + ' reales.' }));
 
-    var gt = el('select', { 'aria-label': 'Tipo de cuadrícula' });
-    [['sq', 'Cuadrada'], ['iso', 'Isométrica 30°']].forEach(function (o) { var op = el('option', { value: o[0], text: o[1] }); if ((q.iso ? 'iso' : 'sq') === o[0]) op.selected = true; gt.appendChild(op); });
-    gt.addEventListener('change', function () { q.iso = gt.value === 'iso'; paperChanged(); });
-    box.appendChild(propRow('Cuadrícula', gt));
+    head('Cuadrícula');
+    box.appendChild(el('div', { class: 'grid-pick' }, GRID_TYPES.map(function (g) {
+      var b = el('button', { type: 'button', class: 'grid-opt', 'aria-pressed': String(q.gridType === g[1]), title: g[2] }, [gridIcon(g[1]), el('span', { text: g[0] })]);
+      b.addEventListener('click', function () { q.gridType = g[1]; paperChanged(); });
+      return b;
+    })));
+    if (q.gridType !== 'none') {
+      var real = q.gridMode === 'real';
+      if (adv) box.appendChild(propRow('Medir en', sel('Medir la cuadrícula en', [['El papel (como la hoja cuadriculada)', 'paper'], ['La obra (medida real)', 'real']], q.gridMode, function (v) { q.gridMode = v; paperChanged(); })));
+      var sq = q.gridType !== 'iso', iso = q.gridType !== 'sq';
+      if (sq) {
+        box.appendChild(propRow(adv ? 'Ancho del cuadro' : 'Cuadro', gridSizeField(real ? q.realX : q.gridIn, real, function (v) { if (real) q.realX = v; else q.gridIn = v; paperChanged(); })));
+        if (adv) {
+          var same = real ? !q.realY : !q.gridInY;
+          box.appendChild(propRow('Alto del cuadro', same ? btn('Igual al ancho · cambiar', function () { if (real) q.realY = q.realX; else q.gridInY = q.gridIn; paperChanged(); })
+            : el('div', { class: 'field-pair' }, [gridSizeField(real ? q.realY : q.gridInY, real, function (v) { if (real) q.realY = v; else q.gridInY = v; paperChanged(); }),
+              btn('=', function () { if (real) q.realY = 0; else q.gridInY = 0; paperChanged(); })])));
+        }
+      }
+      if (iso) {
+        if (!sq || adv) {
+          var isoSame = real ? !q.isoReal : !q.isoIn;
+          box.appendChild(propRow('Lado isométrico', (sq && isoSame) ? btn('Igual al cuadro · cambiar', function () { if (real) q.isoReal = q.realX; else q.isoIn = q.gridIn; paperChanged(); })
+            : gridSizeField(real ? (q.isoReal || q.realX) : (q.isoIn || q.gridIn), real, function (v) { if (real) { if (sq) q.isoReal = v; else q.realX = v; } else { if (sq) q.isoIn = v; else q.gridIn = v; } paperChanged(); })));
+        }
+        var angOpts = [['30° (isométrica)', 30], ['15°', 15], ['45°', 45], ['60°', 60]];
+        if (angOpts.every(function (o) { return o[1] !== q.isoAng; })) angOpts.push([q.isoAng + '° (otro)', q.isoAng]);
+        if (adv) {
+          var angIn = el('input', { type: 'text', placeholder: 'Otro: 20', 'aria-label': 'Otro ángulo' });
+          angIn.addEventListener('change', function () { var v = parseFloat(angIn.value); if (!(v >= 5 && v <= 85)) { toast('Escribe un ángulo entre 5° y 85°.'); angIn.value = ''; return; } q.isoAng = v; paperChanged(); });
+          angIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') angIn.blur(); });
+          box.appendChild(propRow('Ángulo', el('div', { class: 'field-pair' }, [sel('Ángulo de la red', angOpts, q.isoAng, function (v) { q.isoAng = parseFloat(v); paperChanged(); }), angIn])));
+        }
+      }
+      var base = paperGridBase();
+      box.appendChild(el('div', { class: 'hint', text: '1 cuadro = ' + fmt(base) + ' real = ' + paperLenStr(base) + ' en el papel.' }));
+      box.appendChild(propRow('Color', el('div', { class: 'swatches' }, Object.keys(GRID_COLORS).map(function (k) {
+        var b = el('button', { type: 'button', class: 'sw', title: k, 'aria-label': 'Color ' + k, 'aria-pressed': String(q.gridColor === k) });
+        b.style.background = 'rgb(' + GRID_COLORS[k].join(',') + ')';
+        b.addEventListener('click', function () { q.gridColor = k; paperChanged(); });
+        return b;
+      }))));
+      box.appendChild(propRow('Intensidad', sel('Intensidad', [['Suave', 'suave'], ['Media', 'media'], ['Fuerte', 'fuerte']], q.gridStrength, function (v) { q.gridStrength = v; paperChanged(); })));
+      if (adv) {
+        box.appendChild(propRow('Estilo', sel('Estilo de la cuadrícula', [['Líneas', 'lines'], ['Puntos', 'dots']], q.gridStyle, function (v) { q.gridStyle = v; paperChanged(); })));
+        box.appendChild(propRow('Líneas gruesas', sel('Líneas gruesas', [['Sin líneas gruesas', 0], ['Cada 2', 2], ['Cada 4', 4], ['Cada 5', 5], ['Cada 8', 8], ['Cada 10', 10]], q.major, function (v) { q.major = parseInt(v, 10); paperChanged(); })));
+        box.appendChild(propRow('Empieza en', sel('Dónde empieza la cuadrícula', [['El centro de la hoja', 'centro'], ['La esquina del marco', 'marco']], q.gridAt, function (v) { q.gridAt = v; paperChanged(); })));
+      }
+    }
+    if (adv) {
+      var b0 = paperGridBase();
+      box.appendChild(propRow('Snap', sel('Paso del snap', [['Cada cuadro · ' + fmt(b0), 1], ['Medio cuadro · ' + fmt(b0 / 2), 2], ['Cuarto de cuadro · ' + fmt(b0 / 4), 4]], q.snapDiv, function (v) { q.snapDiv = parseInt(v, 10); paperChanged(); })));
+      box.appendChild(propRow('Ángulo polar', selectEl([['Apagado', 0], ['15°', 15], ['30°', 30], ['45°', 45], ['90°', 90]], polarInc, function (v) { polarInc = v; cfgChanged(); }, 'Ángulo polar')));
+      var precOpts = units === 'ft'
+        ? [['1"', 1], ['1/2"', 2], ['1/4"', 4], ['1/8"', 8], ['1/16"', 16]]
+        : [['Automática', 0], ['0.1 m', 1], ['0.01 m (cm)', 2], ['0.001 m (mm)', 3]];
+      box.appendChild(propRow('Precisión', selectEl(precOpts, units === 'ft' ? precision.ft : precision.m, function (v) {
+        if (units === 'ft') precision.ft = v; else precision.m = v;
+        cfgChanged();
+      }, 'Precisión de las medidas')));
+      box.appendChild(propRow('Medida en papel', checkRow(q.paperLen, function (v) { q.paperLen = v; paperChanged(); }, 'Mostrar cuánto mide la línea en el papel')));
+    }
 
-    var gs = el('select', { 'aria-label': 'Tamaño del cuadro' });
-    var paperList = units === 'm' ? GRID_PAPER_M : GRID_PAPER_FT, cur = q.gridMode === 'real' ? 'r:' + gridCfg.step : 'p:' + q.gridIn, found = false;
-    var g1 = el('optgroup', { label: 'Medido en el papel' }), g2 = el('optgroup', { label: 'Medido en la obra (real)' });
-    paperList.forEach(function (x) { var v = 'p:' + x[1], op = el('option', { value: v, text: x[0] + ' en papel' }); if (v === cur) { op.selected = true; found = true; } g1.appendChild(op); });
-    (units === 'ft' ? STEP_PRESETS_FT : STEP_PRESETS_M).forEach(function (x) { var v = 'r:' + x.m, op = el('option', { value: v, text: x.label + ' real' }); if (Math.abs(x.m - (q.gridMode === 'real' ? gridCfg.step : -1)) < 1e-9) { op.selected = true; found = true; } g2.appendChild(op); });
-    gs.appendChild(g1); gs.appendChild(g2);
-    if (!found) { var oth = el('option', { value: cur, text: (q.gridMode === 'real' ? fmt(gridCfg.step) + ' real' : U.formatFtIn(q.gridIn * IN_M, 32) + ' en papel') + ' (otro)' }); oth.selected = true; gs.appendChild(oth); }
-    gs.addEventListener('change', function () {
-      var v = gs.value.split(':'), n = parseFloat(v[1]);
-      if (v[0] === 'p') { q.gridMode = 'paper'; q.gridIn = n; } else { q.gridMode = 'real'; gridCfg.step = n; }
-      paperChanged();
-    });
-    box.appendChild(propRow('Cuadro', gs));
-    var other = el('input', { type: 'text', placeholder: units === 'ft' ? 'Otro real: 6" o 2\'6"' : 'Otro real: 25cm', 'aria-label': 'Otro tamaño de cuadro, medida real' });
-    other.addEventListener('change', function () {
-      var m = U.parseLength(other.value, units); other.value = '';
-      if (isNaN(m) || m < 0.002) { toast('Medida no válida.'); return; }
-      q.gridMode = 'real'; gridCfg.step = m; paperChanged();
-    });
-    other.addEventListener('keydown', function (e) { if (e.key === 'Enter') other.blur(); });
-    box.appendChild(propRow('Otro', other));
-    var base = paperGridBase();
-    box.appendChild(el('div', { class: 'hint', text: '1 cuadro = ' + fmt(base) + ' real = ' + paperLenStr(base) + ' en el papel.' }));
-    box.appendChild(propRow('Líneas gruesas', selectEl([['Cada 2', 2], ['Cada 4', 4], ['Cada 5', 5], ['Cada 8', 8], ['Cada 10', 10]], gridCfg.major, function (v) { gridCfg.major = v; cfgChanged(); }, 'Líneas gruesas')));
-    box.appendChild(propRow('Snap', selectEl([['Cada cuadro · ' + fmt(base), 1], ['Medio cuadro · ' + fmt(base / 2), 2], ['Cuarto de cuadro · ' + fmt(base / 4), 4]], q.snapDiv, function (v) { q.snapDiv = v; paperChanged(); }, 'Paso del snap')));
-    box.appendChild(propRow('Ángulo polar', selectEl([['Apagado', 0], ['15°', 15], ['30°', 30], ['45°', 45], ['90°', 90]], polarInc, function (v) { polarInc = v; cfgChanged(); }, 'Ángulo polar')));
-    var precOpts = units === 'ft'
-      ? [['1"', 1], ['1/2"', 2], ['1/4"', 4], ['1/8"', 8], ['1/16"', 16]]
-      : [['Automática', 0], ['0.1 m', 1], ['0.01 m (cm)', 2], ['0.001 m (mm)', 3]];
-    box.appendChild(propRow('Precisión', selectEl(precOpts, units === 'ft' ? precision.ft : precision.m, function (v) {
-      if (units === 'ft') precision.ft = v; else precision.m = v;
-      cfgChanged();
-    }, 'Precisión de las medidas')));
-    box.appendChild(propRow('Medida en papel', checkRow(q.paperLen, function (v) { q.paperLen = v; paperChanged(); }, 'Mostrar cuánto mide la línea en el papel')));
-
-    [['student', 'Tu nombre', 'Dibujó'], ['course', 'Curso o profesor', 'Curso'], ['sheetNo', 'A-1', 'Lámina']].forEach(function (f) {
+    head('Cajetín');
+    var fields = adv ? [['student', profile.name || 'Tu nombre', 'Dibujó'], ['course', profile.course || 'Curso o profesor', 'Curso'], ['sheetNo', 'A-1', 'Lámina']] : [['sheetNo', 'A-1', 'Lámina']];
+    fields.forEach(function (f) {
       var inp = el('input', { type: 'text', value: q[f[0]] || '', maxlength: '60', placeholder: f[1], 'aria-label': f[2] });
       inp.addEventListener('change', function () { q[f[0]] = inp.value.trim(); autosave(); requestRender(); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') inp.blur(); });
       box.appendChild(propRow(f[2], inp));
     });
-    var acts = el('div', { class: 'btn-row' }, [
+    if (!adv) box.appendChild(el('div', { class: 'hint', text: 'Tu nombre y curso salen de Mi cuenta.' }));
+    box.appendChild(el('div', { class: 'btn-row' }, [
       btn('Ver la hoja', fitView), btn('Tamaño real', realSize), btn('Centrar en el dibujo', centerSheet),
       btn('PNG de la hoja', exportSheetPNG), btn('Imprimir a escala', printSheet)
-    ]);
-    box.appendChild(acts);
-    box.appendChild(propRow('Cuadrícula al imprimir', checkRow(q.printGrid, function (v) { q.printGrid = v; autosave(); }, 'Imprimir la cuadrícula')));
+    ]));
+    if (adv) box.appendChild(propRow('Cuadrícula al imprimir', checkRow(q.printGrid, function (v) { q.printGrid = v; autosave(); }, 'Imprimir la cuadrícula')));
+  }
+
+  /** Simple / Avanzado: cuántas opciones se ven en el panel. */
+  function levelSwitch() {
+    var wrap = el('div', { class: 'seg level-seg', role: 'group', 'aria-label': 'Opciones' });
+    [['simple', 'Simple'], ['avanzado', 'Avanzado']].forEach(function (o) {
+      var b = el('button', { type: 'button', class: 'seg-btn', 'aria-pressed': String(uiLevel === o[0]), text: o[1] });
+      b.addEventListener('click', function () { uiLevel = o[0]; savePrefs(); uiSync(); });
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+  /** Tamaño de cuadro: medidas comunes o la que escribas. En papel guarda pulgadas de papel; en obra, metros. */
+  function gridSizeField(value, real, onSet) {
+    var presets = real ? (units === 'ft' ? STEP_PRESETS_FT : STEP_PRESETS_M).map(function (x) { return [x.label, x.m]; })
+      : (units === 'm' ? GRID_PAPER_M : GRID_PAPER_FT);
+    var known = presets.some(function (p) { return Math.abs(p[1] - value) < 1e-9; });
+    var label = function (v) { return real ? fmt(v) : (units === 'm' ? (Math.round(v * 25.4 * 10) / 10) + ' mm' : U.formatFtIn(v * IN_M, 64)); };
+    var e = el('select', { 'aria-label': 'Tamaño del cuadro' });
+    presets.concat(known ? [] : [[label(value) + ' (tuyo)', value]]).forEach(function (p) {
+      var op = el('option', { value: String(p[1]), text: p[0] }); if (Math.abs(p[1] - value) < 1e-9) op.selected = true; e.appendChild(op);
+    });
+    e.addEventListener('change', function () { onSet(parseFloat(e.value)); });
+    var inp = el('input', { type: 'text', placeholder: real ? (units === 'ft' ? '9"' : '30cm') : (units === 'ft' ? '3/16' : '4mm'), title: 'Escribe otra medida', 'aria-label': 'Otro tamaño de cuadro' });
+    inp.addEventListener('change', function () {
+      var txt = inp.value.trim(), m; inp.value = '';
+      // en papel un número suelto son pulgadas (o milímetros en métrico)
+      if (!real && /^\d+(\.\d+)?$/.test(txt)) m = parseFloat(txt) * (units === 'ft' ? IN_M : 0.001);
+      else if (!real && /^\d+\/\d+$/.test(txt)) m = U.parseLength(txt + '"', 'ft');
+      else m = U.parseLength(txt, units);
+      if (isNaN(m) || m <= 0) { toast('Medida no válida.'); return; }
+      var v = real ? m : m / IN_M;
+      if (!real && (v < 0.03 || v > 4)) { toast('En el papel, entre 1/32" y 4".'); return; }
+      onSet(v);
+    });
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') inp.blur(); });
+    return el('div', { class: 'field-pair grid-size' }, [e, inp]);
+  }
+  function gridIcon(t) {
+    var svg = '<svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><rect x="2.5" y="2.5" width="23" height="23" rx="2" fill="#fbfaf6" stroke="currentColor" stroke-opacity=".35"/>';
+    if (t === 'sq' || t === 'both') svg += '<path d="M9 3v22M14 3v22M19 3v22M3 9h22M3 14h22M3 19h22" stroke="#468cd7" stroke-width="1"/>';
+    if (t === 'iso' || t === 'both') svg += '<path d="M3 20l20-11.5M3 14l14-8M9 25l16-9.2M25 20L5 8.5M25 14L11 6M19 25L3 15.8M14 3v22" stroke="#468cd7" stroke-width="1" ' + (t === 'both' ? 'stroke-dasharray="2 2"' : '') + '/>';
+    svg += '</svg>';
+    var w = el('span', { class: 'gi' }); w.innerHTML = svg; return w;
   }
 
   function resetInstsIfOff() {
@@ -2289,7 +2440,7 @@
   function sheetDpi() { var r = D.sheetSize(doc.paper); return r.w * r.h > 600 ? 120 : 150; }
   function exportSheetPNG() {
     var c2 = renderSheetCanvas(sheetDpi());
-    c2.toBlob(function (blob) { if (blob) { download(blob, 'lamina-cota.png'); toast('Hoja guardada como lamina-cota.png'); } }, 'image/png');
+    c2.toBlob(function (blob) { if (blob) { download(blob, 'lamina-cota.png'); toast('Hoja guardada como lamina-cota.png'); logEvent('png', curName(), curId); } }, 'image/png');
   }
   function printSheet() {
     var r = D.sheetSize(doc.paper), url = renderSheetCanvas(sheetDpi()).toDataURL('image/png');
@@ -2298,6 +2449,7 @@
     w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Lámina · Cota</title><style>@page{size:' + r.w + 'in ' + r.h + 'in;margin:0}html,body{margin:0;background:#fff}img{width:' + r.w + 'in;height:' + r.h + 'in;display:block}</style></head><body><img src="' + url + '" alt="Lámina"><script>document.images[0].onload=function(){setTimeout(function(){print()},250)};<\/script></body></html>');
     w.document.close();
     toast('Imprime al 100% (sin "ajustar a la página") para que la escala quede exacta.');
+    logEvent('imprimir', curName(), curId);
   }
 
   function renderProps() {
@@ -2640,6 +2792,7 @@
   }
 
   function loadDoc(clean, opts) {
+    if (!$('home').hidden) hideHome();
     doc = clean;
     selection.clear(); draft = null; roomCache = { key: '', mask: null };
     history = [snapshot()]; histIdx = 0;
@@ -2712,7 +2865,8 @@
   function thumbOf(d) {
     try {
       var c2 = document.createElement('canvas'); c2.width = 192; c2.height = 132;
-      drawMini(c2, d);
+      if (d.ws === 'clase' && d.paper) drawMiniSheet(c2, { paper: d.paper, objects: (d.objects || []).filter(function (o) { return !o.lv || o.lv === ((d.levels && d.levels[0] && d.levels[0].id) || 'p1'); }) });
+      else drawMini(c2, d);
       return c2.toDataURL('image/png');
     } catch (e) { return ''; }
   }
@@ -2723,7 +2877,7 @@
     try {
       var a = JSON.parse(localStorage.getItem(STORE_INDEX) || '[]');
       if (Array.isArray(a)) projects = a.filter(function (e) { return e && typeof e.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(e.id); })
-        .map(function (e) { return { id: e.id, name: String(e.name || 'Proyecto').slice(0, 60), updated: isNum(e.updated) ? e.updated : Date.now(), thumb: typeof e.thumb === 'string' && e.thumb.indexOf('data:image/png') === 0 ? e.thumb : '' }; });
+        .map(function (e) { return { id: e.id, name: String(e.name || 'Proyecto').slice(0, 60), updated: isNum(e.updated) ? e.updated : Date.now(), created: isNum(e.created) ? e.created : (isNum(e.updated) ? e.updated : Date.now()), ws: e.ws === 'clase' ? 'clase' : 'libre', thumb: typeof e.thumb === 'string' && e.thumb.indexOf('data:image/png') === 0 ? e.thumb : '' }; });
     } catch (e) { projects = []; }
   }
   function saveIndex() { try { localStorage.setItem(STORE_INDEX, JSON.stringify(projects)); } catch (e) { /* nada */ } }
@@ -2736,8 +2890,9 @@
   }
   function registerProject(name, clean) {
     var id = newProjectId();
-    projects.unshift({ id: id, name: name, updated: Date.now(), thumb: thumbOf(clean) });
+    projects.unshift({ id: id, name: name, updated: Date.now(), created: Date.now(), ws: clean.ws === 'clase' ? 'clase' : 'libre', thumb: thumbOf(clean) });
     saveIndex();
+    logEvent('crear', name, id);
     try { localStorage.setItem(STORE_PROJECT + id, JSON.stringify(clean)); } catch (e) { toast('No hay espacio en este navegador para otro proyecto.'); }
     return id;
   }
@@ -2758,6 +2913,7 @@
     if (!clean) { toast('No se pudo abrir "' + e.name + '".'); return; }
     curId = id; savePrefs();
     loadDoc(clean, { message: 'Abriste "' + e.name + '".' });
+    logEvent('abrir', e.name, id);
     document.title = e.name + ' · Cota';
   }
   function startFromTemplate(id) {
@@ -2786,7 +2942,7 @@
     var objs = b.objects, n = 1;
     objs.forEach(function (o) { if (isNum(o.id)) n = Math.max(n, o.id + 1); });
     objs.forEach(function (o) { if (!isNum(o.id)) o.id = n++; o.lv = 'p1'; });
-    var paper = Object.assign(clone(PAPER_DEFAULT), b.paper, { origin: [0, 0] });
+    var paper = applyNewGrid(Object.assign(clone(PAPER_DEFAULT), b.paper, { origin: [0, 0] }));
     if (units !== 'ft') { units = 'ft'; toast('Las plantillas de clase usan pies y pulgadas.'); }
     var clean = cleanDoc({ layers: defaultLayers(), objects: objs, nextId: n, activeLayer: 'dibujo', levels: [{ id: 'p1', name: 'Planta baja' }], level: 'p1', ws: 'clase', paper: paper });
     saveNow();
@@ -2803,11 +2959,20 @@
     var sc = Math.min((w - 16) / sz.w, (h - 16) / sz.h), pw = sz.w * sc, ph = sz.h * sc, ox = (w - pw) / 2, oy = (h - ph) / 2;
     g.fillStyle = theme === 'dark' ? '#070c13' : '#cfd6df'; g.fillRect(0, 0, w, h);
     g.fillStyle = '#fbfaf6'; g.fillRect(ox, oy, pw, ph);
-    function P(q) { return [ox + pw / 2 + q[0] / u * sc, oy + ph / 2 - q[1] / u * sc]; }
-    g.strokeStyle = 'rgba(70, 140, 215, 0.25)'; g.lineWidth = 0.5;
-    var gs = b.paper.gridIn * sc * 4;
-    for (var x = ox + D.MARGIN * sc; x < ox + pw - D.MARGIN * sc; x += gs) { g.beginPath(); g.moveTo(x, oy + D.MARGIN * sc); g.lineTo(x, oy + ph - D.MARGIN * sc); g.stroke(); }
-    for (var y = oy + D.MARGIN * sc; y < oy + ph - D.MARGIN * sc; y += gs) { g.beginPath(); g.moveTo(ox + D.MARGIN * sc, y); g.lineTo(ox + pw - D.MARGIN * sc, y); g.stroke(); }
+    var org = b.paper.origin || [0, 0];
+    function P(q) { return [ox + pw / 2 + (q[0] - org[0]) / u * sc, oy + ph / 2 - (q[1] - org[1]) / u * sc]; }
+    g.strokeStyle = 'rgba(70, 140, 215, 0.3)'; g.lineWidth = 0.5;
+    var gt = b.paper.gridType || 'sq', gs = Math.max(4, b.paper.gridIn * sc * 4), m0 = D.MARGIN * sc;
+    g.save(); g.beginPath(); g.rect(ox + m0, oy + m0, pw - 2 * m0, ph - 2 * m0); g.clip();
+    if (gt === 'sq' || gt === 'both') {
+      for (var x = ox + m0; x < ox + pw; x += gs) { g.beginPath(); g.moveTo(x, oy); g.lineTo(x, oy + ph); g.stroke(); }
+      for (var y = oy + m0; y < oy + ph; y += gs) { g.beginPath(); g.moveTo(ox, y); g.lineTo(ox + pw, y); g.stroke(); }
+    }
+    if (gt === 'iso' || gt === 'both') {
+      var t30 = Math.tan(Math.PI / 6);
+      for (var c = -pw; c < ph + pw; c += gs) { g.beginPath(); g.moveTo(ox, oy + c); g.lineTo(ox + pw, oy + c - pw * t30); g.stroke(); g.beginPath(); g.moveTo(ox, oy + c - pw * t30); g.lineTo(ox + pw, oy + c); g.stroke(); }
+    }
+    g.restore();
     g.strokeStyle = 'rgba(36, 40, 48, 0.9)'; g.lineWidth = 1;
     g.strokeRect(ox + D.MARGIN * sc, oy + D.MARGIN * sc, pw - 2 * D.MARGIN * sc, ph - 2 * D.MARGIN * sc);
     var tx = ox + pw - (D.MARGIN + D.TITLE_W) * sc;
@@ -2832,7 +2997,7 @@
     var clean = cleanDoc(raw);
     if (!clean) { toast('No se pudo duplicar.'); return; }
     registerProject(uniqueName(e.name + ' (copia)'), clean);
-    renderProjects();
+    renderProjects(); if (!$('home').hidden) renderHome();
   }
   function deleteProject(id) {
     var e = projectById(id);
@@ -2842,11 +3007,12 @@
       try { localStorage.removeItem(STORE_PROJECT + id); } catch (err) { /* nada */ }
       projects = projects.filter(function (p) { return p.id !== id; });
       saveIndex();
+      logEvent('borrar', e.name, id);
       if (id === curId) {
         if (projects.length) { curId = ''; openProject(projects[0].id); }
         else { curId = ''; startFromTemplate('blank'); }
       }
-      renderProjects();
+      renderProjects(); if (!$('home').hidden) renderHome();
     });
   }
   function ago(t) {
@@ -2887,17 +3053,41 @@
     });
   }
   function showProjects() { saveNow(); renderProjects(); $('dlg-proj').showModal(); }
-  function showTemplates() {
-    var grid = $('tpl-grid'), grid2 = $('tpl-grid-clase');
-    grid.textContent = ''; grid2.textContent = '';
+  var newGrid = { type: 'tpl', size: 0.25 };
+  /** Cuadrícula que tendrá la hoja nueva: la de la plantilla o la que escojas. */
+  function applyNewGrid(paper) {
+    if (newGrid.type === 'tpl') return paper;
+    paper.gridType = newGrid.type; paper.gridMode = 'paper'; paper.gridIn = newGrid.size; paper.gridInY = 0; paper.isoIn = 0;
+    return paper;
+  }
+  function renderClassTpls() {
+    var grid2 = $('tpl-grid-clase'), pick = $('tpl-grid-pick');
+    grid2.textContent = ''; pick.textContent = '';
+    var tsel = el('select', { 'aria-label': 'Cuadrícula de la hoja nueva' });
+    [['La que trae la plantilla', 'tpl']].concat(GRID_TYPES.map(function (g) { return [g[0] === 'En blanco' ? 'Sin cuadrícula (hoja lisa)' : g[0], g[1]]; })).forEach(function (o) {
+      var op = el('option', { value: o[1], text: o[0] }); if (o[1] === newGrid.type) op.selected = true; tsel.appendChild(op);
+    });
+    tsel.addEventListener('change', function () { newGrid.type = tsel.value; renderClassTpls(); });
+    var zsel = el('select', { 'aria-label': 'Tamaño del cuadro' });
+    GRID_PAPER_FT.forEach(function (o) { var op = el('option', { value: String(o[1]), text: o[0] }); if (Math.abs(o[1] - newGrid.size) < 1e-9) op.selected = true; zsel.appendChild(op); });
+    zsel.addEventListener('change', function () { newGrid.size = parseFloat(zsel.value); renderClassTpls(); });
+    zsel.disabled = newGrid.type === 'tpl' || newGrid.type === 'none';
+    pick.appendChild(el('label', null, [el('span', { text: 'Cuadrícula' }), tsel]));
+    pick.appendChild(el('label', null, [el('span', { text: 'Cuadro' }), zsel]));
     D.CLASS_LIST.forEach(function (item) {
       var b0 = classBuild(item.id);
+      b0.paper = applyNewGrid(Object.assign(clone(PAPER_DEFAULT), b0.paper));
       var c2 = el('canvas', { width: '320', height: '220' });
       drawMiniSheet(c2, b0);
       var b = el('button', { class: 'tpl', type: 'button' }, [c2, el('b', { text: item.name }), el('span', { text: item.desc })]);
       b.addEventListener('click', function () { $('dlg-new').close(); startClass(item.id); });
       grid2.appendChild(b);
     });
+  }
+  function showTemplates(section) {
+    var grid = $('tpl-grid');
+    grid.textContent = '';
+    renderClassTpls();
     TPL.LIST.forEach(function (item) {
       var t = TPL.build(item.id);
       var c2 = el('canvas', { width: '320', height: '220' });
@@ -2907,12 +3097,166 @@
       grid.appendChild(b);
     });
     $('dlg-new').showModal();
+    var target = section === 'libre' ? $('tpl-h-libre') : section === 'clase' ? $('tpl-h-clase') : null;
+    if (target) target.scrollIntoView({ block: 'start' });
   }
   $('ws-clase').addEventListener('click', function () { setWs('clase'); });
   $('ws-libre').addEventListener('click', function () { setWs('libre'); });
 
-  $('btn-new').addEventListener('click', showTemplates);
-  $('btn-proj').addEventListener('click', showProjects);
+  /* ---------- historial ---------- */
+  var STORE_LOG = 'cota:log:v1';
+  var LOG_TEXT = { crear: 'Creaste', abrir: 'Abriste', borrar: 'Borraste', png: 'Guardaste la imagen de', imprimir: 'Imprimiste', archivo: 'Descargaste', respaldo: 'Restauraste un respaldo con' };
+  function readLog() {
+    try { var a = JSON.parse(localStorage.getItem(STORE_LOG) || '[]'); return Array.isArray(a) ? a.filter(function (x) { return x && isNum(x.t) && LOG_TEXT[x.type]; }) : []; }
+    catch (e) { return []; }
+  }
+  function logEvent(type, name, id) {
+    var a = readLog();
+    // abrir varias veces seguidas el mismo proyecto cuenta una sola vez
+    if (a.length && a[0].type === type && a[0].id === id && Date.now() - a[0].t < 600000) a.shift();
+    a.unshift({ t: Date.now(), type: type, name: String(name || '').slice(0, 60), id: id || '' });
+    try { localStorage.setItem(STORE_LOG, JSON.stringify(a.slice(0, 120))); } catch (e) { /* nada */ }
+  }
+  function curName() { var e = projectById(curId); return e ? e.name : 'Plano'; }
+
+  /* ---------- inicio ---------- */
+  function showHome() {
+    saveNow();
+    renderHome();
+    $('home').hidden = false;
+    $('app').setAttribute('aria-hidden', 'true');
+  }
+  function hideHome() { $('home').hidden = true; $('app').removeAttribute('aria-hidden'); resize(); }
+  function renderHome() {
+    var h = $('home-body');
+    h.textContent = '';
+    var hi = new Date().getHours(), saludo = hi < 12 ? 'Buenos días' : hi < 19 ? 'Buenas tardes' : 'Buenas noches';
+    var cur = projectById(curId);
+    h.appendChild(el('div', { class: 'home-head' }, [
+      el('div', null, [el('h1', { text: saludo + (profile.name ? ', ' + profile.name.split(' ')[0] : '') }), el('p', { class: 'muted', text: profile.course ? profile.course : 'Planos para clase y diseño de interiores.' })]),
+      el('div', { class: 'home-head-btns' }, [btn('Mi cuenta', showAccount), cur ? btn('Seguir con "' + cur.name + '" →', function () { hideHome(); }, 'primary') : null])
+    ]));
+    function card(title, desc, icon, fn) {
+      var b = el('button', { class: 'start-card', type: 'button' }, [el('span', { class: 'sc-ico' }, [icon]), el('b', { text: title }), el('span', { text: desc })]);
+      b.addEventListener('click', fn); return b;
+    }
+    h.appendChild(el('h2', { text: 'Empezar' }));
+    h.appendChild(el('div', { class: 'start-grid' }, [
+      card('Hoja de clase', 'Papel con cajetín, escala, minas y escuadras', gridIcon('sq'), function () { showTemplates('clase'); }),
+      card('Diseño libre', 'Interiores, muebles y vista 3D', svgIcon('furn', 26), function () { showTemplates('libre'); }),
+      card('Hoja en blanco', '18 × 24 lisa, tú escoges la cuadrícula', gridIcon('none'), function () { newGrid.type = 'none'; startClass('c-blank'); newGrid.type = 'tpl'; hideHome(); }),
+      card('Abrir archivo', 'Un plano .json que guardaste', svgIcon('folder', 26), function () { $('file-open').click(); })
+    ]));
+    h.appendChild(el('div', { class: 'home-row' }, [el('h2', { text: 'Tus proyectos' }), el('span', { class: 'plan-tag', text: planText() })]));
+    var filt = el('div', { class: 'seg', role: 'group', 'aria-label': 'Filtrar proyectos' });
+    [['todos', 'Todos'], ['clase', 'Clase'], ['libre', 'Libre']].forEach(function (f) {
+      var b = el('button', { type: 'button', class: 'seg-btn', 'aria-pressed': String(homeFilter === f[0]), text: f[1] });
+      b.addEventListener('click', function () { homeFilter = f[0]; renderHome(); });
+      filt.appendChild(b);
+    });
+    h.appendChild(filt);
+    var list = projects.filter(function (e) { return homeFilter === 'todos' || e.ws === homeFilter; }).slice().sort(function (a, b) { return b.updated - a.updated; });
+    var grid = el('div', { class: 'proj-grid' });
+    if (!list.length) grid.appendChild(el('p', { class: 'muted', text: 'Todavía no hay proyectos aquí.' }));
+    list.forEach(function (e) {
+      var isCur = e.id === curId;
+      var thumb = e.thumb ? el('img', { src: e.thumb, alt: '' }) : el('div', { class: 'thumb-empty' });
+      var open = el('button', { class: 'pc-open', type: 'button', 'aria-label': 'Abrir ' + e.name }, [thumb]);
+      open.addEventListener('click', function () { if (!isCur) openProject(e.id); hideHome(); });
+      var acts = el('div', { class: 'pc-acts' }, [
+        btn('Abrir', function () { if (!isCur) openProject(e.id); hideHome(); }),
+        btn('Duplicar', function () { duplicateProject(e.id); }),
+        btn('Borrar', function () { deleteProject(e.id); }, 'danger')
+      ]);
+      grid.appendChild(el('div', { class: 'proj-card' + (isCur ? ' current' : '') }, [
+        open,
+        el('div', { class: 'pc-meta' }, [el('b', { text: e.name }), el('span', { class: 'badge ' + e.ws, text: e.ws === 'clase' ? 'Clase' : 'Libre' })]),
+        el('div', { class: 'muted small', text: (isCur ? 'Abierto · ' : '') + 'editado ' + ago(e.updated) }),
+        acts
+      ]));
+    });
+    h.appendChild(grid);
+    h.appendChild(el('h2', { text: 'Historial' }));
+    var log = readLog().slice(0, 15), ul = el('ul', { class: 'log' });
+    if (!log.length) ul.appendChild(el('li', { class: 'muted', text: 'Aquí verás lo que vas haciendo: proyectos que creas, abres, imprimes...' }));
+    log.forEach(function (x) { ul.appendChild(el('li', null, [el('span', { text: LOG_TEXT[x.type] + ' "' + x.name + '"' }), el('span', { class: 'muted small', text: ago(x.t) })])); });
+    h.appendChild(ul);
+    var sk = el('input', { type: 'checkbox', id: 'home-skip' }); sk.checked = skipHome;
+    sk.addEventListener('change', function () { skipHome = sk.checked; savePrefs(); });
+    h.appendChild(el('label', { class: 'opt-check home-skip' }, [sk, document.createTextNode(' Al abrir Cota, ir directo a mi último proyecto')]));
+  }
+  var homeFilter = 'todos';
+
+  /* ---------- mi cuenta ---------- */
+  function showAccount() {
+    var d = $('dlg-account'), b = $('acc-body');
+    b.textContent = '';
+    b.appendChild(el('h3', { text: 'Mi cuenta' }));
+    b.appendChild(el('p', { class: 'muted', text: 'Tu cuenta vive en este navegador: tus proyectos, tu nombre y tu historial se guardan aquí. La cuenta en la nube (para verla en otro equipo) viene después; mientras tanto, descarga un respaldo y ábrelo donde quieras.' }));
+    [['name', 'Nombre', 'Tu nombre (sale en el cajetín)'], ['course', 'Curso', 'Ej. Dibujo arquitectónico I'], ['school', 'Escuela', 'Tu universidad o college']].forEach(function (f) {
+      var inp = el('input', { type: 'text', value: profile[f[0]] || '', maxlength: '60', placeholder: f[2], 'aria-label': f[1] });
+      inp.addEventListener('change', function () { profile[f[0]] = inp.value.trim(); savePrefs(); requestRender(); if (!$('home').hidden) renderHome(); });
+      b.appendChild(propRow(f[1], inp));
+    });
+    var nc = projects.filter(function (e) { return e.ws === 'clase'; }).length;
+    var first = projects.reduce(function (m, e) { return Math.min(m, e.created || e.updated); }, Date.now());
+    b.appendChild(el('div', { class: 'acc-stats' }, [
+      el('div', null, [el('b', { text: String(projects.length) }), el('span', { text: 'proyectos' })]),
+      el('div', null, [el('b', { text: String(nc) }), el('span', { text: 'de clase' })]),
+      el('div', null, [el('b', { text: String(projects.length - nc) }), el('span', { text: 'libres' })]),
+      el('div', null, [el('b', { text: new Date(first).toLocaleDateString('es', { month: 'short', year: 'numeric' }) }), el('span', { text: 'desde' })])
+    ]));
+    b.appendChild(propRow('Plan', valSpan(planText())));
+    b.appendChild(el('div', { class: 'btn-row' }, [btn('Descargar respaldo', backupAll), btn('Restaurar respaldo', function () { $('file-backup').click(); }), btn('Borrar historial', function () {
+      ask('¿Borrar el historial?', 'Tus proyectos no se borran, solo la lista de lo que hiciste.', { ok: 'Borrar' }).then(function (y) { if (y) { try { localStorage.removeItem(STORE_LOG); } catch (e) { /* nada */ } if (!$('home').hidden) renderHome(); toast('Historial borrado.'); } });
+    }, 'danger')]));
+    var close = el('button', { class: 'pill', type: 'button', text: 'Listo' });
+    close.addEventListener('click', function () { d.close(); });
+    b.appendChild(el('div', { class: 'dlg-actions' }, [close]));
+    d.showModal();
+  }
+  function backupAll() {
+    saveNow();
+    var out = { app: 'cota-respaldo', version: 1, fecha: new Date().toISOString(), profile: profile, log: readLog(), projects: [] };
+    projects.forEach(function (e) {
+      var raw = null; try { raw = JSON.parse(localStorage.getItem(STORE_PROJECT + e.id) || 'null'); } catch (err) { raw = null; }
+      if (raw) out.projects.push({ name: e.name, ws: e.ws, created: e.created, updated: e.updated, doc: raw });
+    });
+    download(new Blob([JSON.stringify(out)], { type: 'application/json' }), 'cota-respaldo-' + new Date().toISOString().slice(0, 10) + '.json');
+    toast('Respaldo descargado con ' + out.projects.length + ' proyectos.');
+  }
+  function restoreBackup(data) {
+    if (!data || data.app !== 'cota-respaldo' || !Array.isArray(data.projects)) { toast('Ese archivo no es un respaldo de Cota.'); return; }
+    var ok = data.projects.map(function (p) { return { p: p, clean: cleanDoc(p.doc) }; }).filter(function (x) { return x.clean; });
+    function go() {
+      ok.forEach(function (x) {
+        var id = registerProject(uniqueName(String(x.p.name || 'Proyecto').slice(0, 50)), x.clean);
+        var e = projectById(id); if (e && isNum(x.p.created)) e.created = x.p.created;
+      });
+      saveIndex();
+      if (data.profile && !profile.name) ['name', 'course', 'school'].forEach(function (k) { if (typeof data.profile[k] === 'string') profile[k] = data.profile[k].slice(0, 60); });
+      savePrefs();
+      logEvent('respaldo', ok.length + ' proyectos', '');
+      toast('Listo: ' + ok.length + ' proyectos restaurados.');
+      if (!$('home').hidden) renderHome();
+      if ($('dlg-account').open) showAccount();
+    }
+    if (!pro && projects.length + ok.length > LIMITS.projects) { needPro('El respaldo trae ' + ok.length + ' proyectos y el plan gratis guarda hasta ' + LIMITS.projects + '.', go); return; }
+    go();
+  }
+  $('file-backup').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { var d = null; try { d = JSON.parse(String(r.result)); } catch (err) { d = null; } restoreBackup(d); };
+    r.readAsText(f);
+  });
+  $('btn-home').addEventListener('click', showHome);
+  $('home-close').addEventListener('click', hideHome);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('home').hidden && !document.querySelector('dialog[open]')) hideHome(); });
+
+  $('btn-new').addEventListener('click', function () { showTemplates(); });
+  $('btn-proj').addEventListener('click', showHome);
   $('tpl-cancel').addEventListener('click', function () { $('dlg-new').close(); });
   $('proj-close').addEventListener('click', function () { $('dlg-proj').close(); });
   $('proj-new').addEventListener('click', function () { $('dlg-proj').close(); showTemplates(); });
@@ -2923,6 +3267,7 @@
     var payload = { app: 'cota', version: 3, units: units, layers: doc.layers, objects: doc.objects, nextId: doc.nextId, activeLayer: doc.activeLayer, levels: doc.levels, level: doc.level, ws: doc.ws, paper: doc.paper };
     var e = projectById(curId), base = (e ? e.name : 'plano-cota').replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '').trim().replace(/\s+/g, '-') || 'plano-cota';
     download(new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }), base + '.json');
+    logEvent('archivo', e ? e.name : base, curId);
     toast('Guardado como ' + base + '.json');
   });
   $('btn-open').addEventListener('click', function () { $('file-open').click(); });
@@ -3283,7 +3628,8 @@
     cv.classList.add('select');
     uiSync();
     fitView();
-    if (!fromStore) toast('Este es un plano de ejemplo. Dibuja encima o usa Nuevo para empezar con una plantilla.');
+    if (!skipHome) showHome();
+    else if (!fromStore) toast('Este es un plano de ejemplo. Dibuja encima o usa Nuevo para empezar con una plantilla.');
     if (window.matchMedia) {
       var mq = window.matchMedia('(prefers-color-scheme: light)');
       if (mq.addEventListener) mq.addEventListener('change', function (ev) {

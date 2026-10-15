@@ -81,20 +81,21 @@
   var ISO_DIRS = [30, 90, 150];
   var C30 = Math.cos(30 * D2R);
 
-  /** Punto más cercano de la red isométrica (triángulos de lado s; líneas a 30°, 90° y 150°). */
-  function isoSnap(p, s) {
-    var bx = s * C30;                  // separación entre verticales
+  /** Punto más cercano de la red isométrica: lado s, líneas a ang°, 90° y (180-ang)°. Con 30° es la isométrica clásica. */
+  function isoSnap(p, s, ang) {
+    var a = (ang || 30) * D2R, bx = s * Math.cos(a), rise = s * Math.sin(a), v = 2 * rise;
     var i0 = Math.round(p[0] / bx), best = null, bd = Infinity;
     for (var i = i0 - 1; i <= i0 + 1; i++) {
-      var x = i * bx, off = i * s / 2;
-      var j = Math.round((p[1] - off) / s);
+      var x = i * bx, off = i * rise;
+      var j = Math.round((p[1] - off) / v);
       for (var jj = j - 1; jj <= j + 1; jj++) {
-        var y = off + jj * s, d = Math.hypot(p[0] - x, p[1] - y);
+        var y = off + jj * v, d = Math.hypot(p[0] - x, p[1] - y);
         if (d < bd) { bd = d; best = [x, y]; }
       }
     }
     return best;
   }
+  function isoDirs(ang) { var a = ang || 30; return [a, 90, 180 - a]; }
 
   /** Lleva p a la dirección más cercana de `dirs` (grados, como rectas: 30 también vale 210) desde `from`.
    *  tolDeg = null obliga siempre; si no, solo cuando está a menos de tolDeg. Devuelve {p, ang} o null. */
@@ -324,7 +325,7 @@
     { id: 'c-planta', name: 'Planta arquitectónica', desc: '18 × 24 · 1/4" = 1\'-0" · casa de 3 cuartos para calcar y acotar.', paper: { sheet: '18x24', orient: 'land', scale: 'a0.25', gridIn: 0.25 }, base: 'casa' },
     { id: 'c-elevacion', name: 'Elevación frontal', desc: '18 × 24 · 1/4" = 1\'-0" · alturas, techo 6/12, puerta y ventanas.', paper: { sheet: '18x24', orient: 'land', scale: 'a0.25', gridIn: 0.25 } },
     { id: 'c-orto', name: 'Vistas ortogonales', desc: '11 × 17 · 1" = 1\'-0" · planta, frente y lateral con línea a 45°.', paper: { sheet: '11x17', orient: 'land', scale: 'a1', gridIn: 0.25 } },
-    { id: 'c-iso', name: 'Isométrico 30°', desc: '11 × 17 · 1" = 1\'-0" · cuadrícula isométrica y un bloque en L.', paper: { sheet: '11x17', orient: 'land', scale: 'a1', gridIn: 0.25, iso: true } }
+    { id: 'c-iso', name: 'Isométrico 30°', desc: '11 × 17 · 1" = 1\'-0" · cuadrícula isométrica y un bloque en L.', paper: { sheet: '11x17', orient: 'land', scale: 'a1', gridIn: 0.25, gridType: 'iso' } }
   ];
 
   /** Zona libre para dibujar (marco sin el cajetín), en el mundo, con la hoja centrada en [0,0]. */
@@ -436,7 +437,7 @@
     IN: IN, SCALES_FT: SCALES_FT, SCALES_M: SCALES_M, SHEETS: SHEETS, KINDS: KINDS, ISO_DIRS: ISO_DIRS,
     MARGIN: MARGIN, TITLE_W: TITLE_W, RULER: RULER, TSQ: TSQ, T3060: T3060, T45: T45,
     scaleById: scaleById, unitOf: unitOf, sheetSize: sheetSize, sheetRect: sheetRect, sheetLayout: sheetLayout,
-    isoSnap: isoSnap, constrainDir: constrainDir,
+    isoSnap: isoSnap, isoDirs: isoDirs, constrainDir: constrainDir,
     toWorld: toWorld, toLocal: toLocal, instGeom: instGeom, pointInPoly: pointInPoly, closestOnSeg: closestOnSeg,
     snapToEdges: snapToEdges, edgeDirs: edgeDirs, rulerTicks: rulerTicks, defaultInstruments: defaultInstruments,
     LEADS: LEADS, PENS: PENS, leadById: leadById, penById: penById, CLASS_LIST: CLASS_LIST, drawArea: drawArea, buildClass: buildClass
