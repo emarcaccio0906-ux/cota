@@ -40,6 +40,7 @@ abre `index.html` o publícalo tal cual (GitHub Pages, Netlify, Vercel).
 ## Inicio y cuenta
 
 - Pantalla de inicio con tus proyectos (filtra Clase / Libre), empezar hoja de clase, diseño libre, hoja en blanco o abrir archivo
+- Iniciar sesión: cada persona crea su cuenta (nombre y PIN opcional) y ve solo sus proyectos; el inicio la saluda por su nombre. La primera cuenta se queda con lo que ya estaba guardado
 - Mi cuenta: nombre, curso y escuela (salen en el cajetín), resumen de proyectos, historial de lo que haces y respaldo para llevarte todo a otro equipo. Vive en el navegador; la nube viene después
 
 ## Modo clase: dibujo técnico como en papel
