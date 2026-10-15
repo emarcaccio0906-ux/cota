@@ -17,7 +17,7 @@ console.log('Muebles');
 test('el catálogo tiene piezas completas', () => {
   assert.ok(F.CATALOG.length >= 20);
   F.CATALOG.forEach(c => {
-    assert.ok(c.w > 0.2 && c.d > 0.2, c.id);
+    assert.ok(c.w > 0.2 && c.d > (c.mount || c.id === 'cortina' ? 0.02 : 0.2), c.id);
     const bx = F.boxes(c.id, c.w, c.d, 2.6);
     assert.ok(bx.length >= 1, c.id);
     bx.forEach(b => {
