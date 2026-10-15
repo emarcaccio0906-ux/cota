@@ -490,3 +490,6 @@ button.brand:hover { background: var(--panel-2); }
 .login-err { color: var(--danger); min-height: 1.2em; margin: 0; font-size: 13px; }
 .login-note { margin-top: 18px; line-height: 1.4; }
 .btn-row.tight { margin: 0; }
+
+#draftbar .db-sel { height: 30px; max-width: 150px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 12px; padding: 0 4px; }
+#draftbar .db-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 0 4px; }
