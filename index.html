@@ -11,10 +11,10 @@
 <div id="app">
 
   <header class="topbar">
-    <div class="brand" aria-label="Cota">
+    <button class="brand" id="btn-home" type="button" title="Inicio: tus proyectos y tu cuenta" aria-label="Inicio">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 20V4h18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/><path d="M8 20V9h13" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="square"/></svg>
       <span>Cota</span>
-    </div>
+    </button>
 
     <div class="seg" id="mode-seg" role="group" aria-label="Modo de vista">
       <button id="m-2d" class="seg-btn" aria-pressed="true">2D</button>
@@ -32,7 +32,7 @@
     </div>
 
     <div class="group">
-      <button class="txt-btn proj-btn" id="btn-proj" title="Tus proyectos" aria-label="Proyectos"><span class="proj-ico"></span><span class="long">Proyectos</span></button>
+      <button class="txt-btn proj-btn" id="btn-proj" title="Inicio: tus proyectos" aria-label="Inicio"><span class="proj-ico"></span><span class="long">Inicio</span></button>
     </div>
 
     <div class="group file-group">
@@ -167,10 +167,11 @@
   <div class="dlg-body">
     <h3>Proyecto nuevo</h3>
     <p>Elige cómo vas a trabajar. Tu proyecto actual se queda guardado en Proyectos.</p>
-    <h4 class="tpl-h">Clase · dibujo técnico en papel</h4>
+    <h4 class="tpl-h" id="tpl-h-clase">Clase · dibujo técnico en papel</h4>
     <p class="tpl-p">Hoja con cajetín, escala de escalímetro, minas (2H, HB...) y escuadras. Para practicar las tareas antes de hacerlas a mano.</p>
+    <div class="tpl-pick" id="tpl-grid-pick"></div>
     <div id="tpl-grid-clase" class="tpl-grid"></div>
-    <h4 class="tpl-h">Libre · diseño de interiores y 3D</h4>
+    <h4 class="tpl-h" id="tpl-h-libre">Libre · diseño de interiores y 3D</h4>
     <p class="tpl-p">Sin hoja: paredes, muebles, varios pisos y recorrido en 3D.</p>
     <div id="tpl-grid" class="tpl-grid"></div>
     <div class="dlg-actions"><button class="pill ghost" id="tpl-cancel" type="button">Cancelar</button></div>
@@ -213,7 +214,18 @@
   </form>
 </dialog>
 
+<dialog id="dlg-account"><div class="dlg-body" id="acc-body"></div></dialog>
+
+<div id="home" class="home" role="dialog" aria-label="Inicio" hidden>
+  <div class="home-top">
+    <div class="brand"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 20V4h18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/><path d="M8 20V9h13" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="square"/></svg><span>Cota</span></div>
+    <button class="chip-btn" id="home-close" type="button">Ir al plano</button>
+  </div>
+  <div class="home-body" id="home-body"></div>
+</div>
+
 <input type="file" id="file-open" accept=".json,application/json" hidden>
+<input type="file" id="file-backup" accept=".json,application/json" hidden>
 
 <script src="vendor/three.min.js"></script>
 <script src="js/units.js"></script>
